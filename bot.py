@@ -90,7 +90,7 @@ def postar_promocao():
 # ==============================
 # Agenda: posta 1x a cada 2 horas
 # ==============================
-schedule.every(2).hours.do(postar_promocao)
+schedule.every(2).minutes.do(postar_promocao)
 
 print("🤖 Bot Shopee iniciado...")
 
