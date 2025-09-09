@@ -1,3 +1,4 @@
 tweepy
 requests
 schedule
+beautifulsoup4
