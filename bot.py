@@ -4,7 +4,6 @@ import random
 import schedule
 import time
 import requests
-from bs4 import BeautifulSoup
 
 # ==============================
 # Configurações via variáveis de ambiente
@@ -15,7 +14,6 @@ ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
 ACCESS_SECRET = os.environ.get("ACCESS_SECRET")
 AFILIADO = os.environ.get("AFILIADO")  # Ex: "af_id=SEU_CODIGO"
 
-# chave de IA (ex: OpenAI)
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 # Autenticação na API v2 do X (Twitter)
@@ -30,44 +28,58 @@ auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET
 api_v1 = tweepy.API(auth)  # usado só para upload de mídia
 
 # ==============================
-# Categorias Shopee
+# Palavras-chave para busca na Shopee
 # ==============================
-CATEGORIAS = [
-    "https://shopee.com.br/flash_sale",
-    "https://shopee.com.br/Celulares-e-Dispositivos-cat.11059988",
-    "https://shopee.com.br/Roupas-Masculinas-cat.11059986",
-    "https://shopee.com.br/Roupas-Plus-Size-cat.11116689",
-    "https://shopee.com.br/Sapatos-Masculinos-cat.11059987",
-    "https://shopee.com.br/Acess%C3%B3rios-de-Moda-cat.11059978",
-    "https://shopee.com.br/Eletrodom%C3%A9sticos-cat.11059984",
-    "https://shopee.com.br/Acess%C3%B3rios-para-Ve%C3%ADculos-cat.11117089",
-    "https://shopee.com.br/%C3%81udio-cat.11059971",
-    "https://shopee.com.br/Casa-e-Constru%C3%A7%C3%A3o-cat.11059983",
-    "https://shopee.com.br/Moda-Infantil-cat.11059973",
-    "https://shopee.com.br/Esportes-e-Lazer-cat.11059992",
-    
+PALAVRAS_CHAVE = [
+    "oferta",
+    "promoção",
+    "eletrônicos",
+    "moda masculina",
+    "sapatos",
+    "eletrodomésticos",
+    "casa",
+    "esporte",
 ]
 
 # ==============================
-# Função para buscar promoções
+# Função para buscar promoções via API JSON
 # ==============================
 def buscar_promocoes():
-    url = random.choice(CATEGORIAS)
+    termo = random.choice(PALAVRAS_CHAVE)
+    url = "https://shopee.com.br/api/v4/search/search_items"
+    params = {
+        "by": "relevancy",
+        "keyword": termo,
+        "limit": 20,
+        "newest": 0,
+        "order": "desc",
+        "page_type": "search"
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json"
+    }
+
     try:
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        soup = BeautifulSoup(r.text, "html.parser")
+        r = requests.get(url, params=params, headers=headers, timeout=10)
+        if r.status_code != 200:
+            print("⚠️ Erro na API Shopee:", r.status_code)
+            return []
 
+        data = r.json()
         promocoes = []
-        for item in soup.select("a"):
-            link = item.get("href")
-            titulo = item.get_text().strip()
-            img_tag = item.find("img")
-            img_link = img_tag["src"] if img_tag and "http" in img_tag["src"] else None
-
-            if link and "shopee" in link and titulo and img_link:
-                if not link.startswith("http"):
-                    link = "https://shopee.com.br" + link
-                promocoes.append({"titulo": titulo, "link": link, "img": img_link})
+        for item in data.get("items", []):
+            produto = item.get("item_basic", {})
+            nome = produto.get("name")
+            preco = produto.get("price") / 100000  # preço vem multiplicado
+            imagem = f"https://cf.shopee.com.br/file/{produto.get('image')}"
+            link = f"https://shopee.com.br/product/{produto.get('shopid')}/{produto.get('itemid')}"
+            promocoes.append({
+                "titulo": nome,
+                "preco": preco,
+                "link": link,
+                "img": imagem
+            })
         return promocoes
     except Exception as e:
         print("⚠️ Erro ao buscar promoções:", e)
@@ -78,7 +90,7 @@ def buscar_promocoes():
 # ==============================
 def melhorar_titulo(titulo):
     if not OPENAI_API_KEY:
-        return titulo  # fallback sem IA
+        return titulo
 
     try:
         import openai
@@ -107,10 +119,9 @@ def postar_promocao():
     promo = random.choice(promocoes)
     titulo = melhorar_titulo(promo['titulo'])
     link_afiliado = f"{promo['link']}?{AFILIADO}"
-    tweet = f"🔥 Promoção Shopee!\n{titulo}\n👉 {link_afiliado}"
+    tweet = f"🔥 Promoção Shopee!\n{titulo}\n💰 R${promo['preco']:.2f}\n👉 {link_afiliado}"
 
     try:
-        # Baixar imagem
         img_path = "temp.jpg"
         r = requests.get(promo["img"], stream=True, timeout=10)
         if r.status_code == 200:
@@ -118,10 +129,7 @@ def postar_promocao():
                 for chunk in r.iter_content(1024):
                     f.write(chunk)
 
-            # Upload da imagem
             media = api_v1.media_upload(img_path)
-
-            # Postar tweet com imagem
             client.create_tweet(text=tweet, media_ids=[media.media_id])
             print("✅ Tweet postado com imagem:", tweet)
             os.remove(img_path)
@@ -134,7 +142,7 @@ def postar_promocao():
 # ==============================
 # Agenda: posta 1x a cada 2 horas
 # ==============================
-schedule.every(2).minutes.do(postar_promocao)
+schedule.every(2).hours.do(postar_promocao)
 
 print("🤖 Bot Shopee iniciado...")
 
