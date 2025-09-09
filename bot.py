@@ -4,6 +4,7 @@ import random
 import schedule
 import time
 import requests
+import json
 
 # ==============================
 # Configurações via variáveis de ambiente
@@ -22,19 +23,19 @@ client = tweepy.Client(
     access_token_secret=ACCESS_SECRET
 )
 
-# API v1.1 só para upload de mídia e trends
+# API v1.1 para upload de mídia e trends
 auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET)
 api_v1 = tweepy.API(auth)
 
 # ==============================
-# Categorias via API Shopee
+# Endpoints da Shopee (testados)
 # ==============================
 CATEGORIAS_API = {
-    "flash_sale": "https://shopee.com.br/api/v4/flash_sale/flash_sale_get_items?limit=20&offset=0",
-    "eletronicos": "https://shopee.com.br/api/v4/search/search_items?by=pop&limit=20&match_id=11001048&newest=0&order=desc&page_type=search&scenario=PAGE_CATEGORY",
-    "moda": "https://shopee.com.br/api/v4/search/search_items?by=pop&limit=20&match_id=11035647&newest=0&order=desc&page_type=search&scenario=PAGE_CATEGORY",
-    "casa": "https://shopee.com.br/api/v4/search/search_items?by=pop&limit=20&match_id=11035652&newest=0&order=desc&page_type=search&scenario=PAGE_CATEGORY",
-    "adulto": "https://shopee.com.br/api/v4/search/search_items?by=pop&limit=20&match_id=11044421&newest=0&order=desc&page_type=search&scenario=PAGE_CATEGORY"
+    "flash_sale": "https://shopee.com.br/api/v4/flash_sale/flash_sale_get_items?limit=20&offset=0&need_personalize=true",
+    "eletronicos": "https://shopee.com.br/api/v4/recommend/recommend?bundle=category_landing_page&catid=11001048&limit=20",
+    "moda": "https://shopee.com.br/api/v4/recommend/recommend?bundle=category_landing_page&catid=11035647&limit=20",
+    "casa": "https://shopee.com.br/api/v4/recommend/recommend?bundle=category_landing_page&catid=11035652&limit=20",
+    "adulto": "https://shopee.com.br/api/v4/recommend/recommend?bundle=category_landing_page&catid=11044421&limit=20"
 }
 
 # ==============================
@@ -43,28 +44,36 @@ CATEGORIAS_API = {
 def buscar_promocoes():
     url = random.choice(list(CATEGORIAS_API.values()))
     try:
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
         data = r.json()
 
         promocoes = []
-        if "items" in data:  # categorias normais
-            items = data["items"]
-            for item in items:
-                produto = item["item_basic"]
-                promocoes.append({
-                    "titulo": produto["name"],
-                    "link": f"https://shopee.com.br/product/{produto['shopid']}/{produto['itemid']}",
-                    "img": f"https://cf.shopee.com.br/file/{produto['image']}"
-                })
-        elif "data" in data:  # flash sale
-            items = data["data"]["items"]
-            for item in items:
+
+        # Flash sale
+        if "data" in data and "items" in data["data"]:
+            for item in data["data"]["items"]:
                 produto = item["item"]
                 promocoes.append({
                     "titulo": produto["name"],
                     "link": f"https://shopee.com.br/product/{produto['shopid']}/{produto['itemid']}",
                     "img": f"https://cf.shopee.com.br/file/{produto['image']}"
                 })
+
+        # Categorias
+        elif "data" in data and "sections" in data["data"]:
+            for section in data["data"]["sections"]:
+                if "data" in section:
+                    for item in section["data"]["item"]:
+                        promocoes.append({
+                            "titulo": item["name"],
+                            "link": f"https://shopee.com.br/product/{item['shopid']}/{item['itemid']}",
+                            "img": f"https://cf.shopee.com.br/file/{item['image']}"
+                        })
+
+        if not promocoes:
+            print("⚠️ Nenhum item encontrado, resposta bruta:")
+            print(json.dumps(data, indent=2)[:1000])  # imprime só os primeiros 1000 chars p/ debug
+
         return promocoes
     except Exception as e:
         print("⚠️ Erro ao buscar promoções:", e)
@@ -75,7 +84,7 @@ def buscar_promocoes():
 # ==============================
 def get_trend_hashtag():
     try:
-        # 1 = mundial, 23424768 = Brasil (pode trocar WOEID)
+        # 23424768 = Brasil
         trends = api_v1.get_place_trends(23424768)
         hashtags = [t["name"] for t in trends[0]["trends"] if t["name"].startswith("#")]
         if hashtags:
@@ -100,7 +109,6 @@ def postar_promocao():
     tweet = f"🔥 Promoção Shopee!\n{promo['titulo']}\n👉 {link_afiliado}\n{hashtag}"
 
     try:
-        # baixar imagem
         img_path = "temp.jpg"
         r = requests.get(promo["img"], stream=True, timeout=10)
         if r.status_code == 200:
@@ -121,7 +129,7 @@ def postar_promocao():
 # ==============================
 # Agenda: posta a cada 2h
 # ==============================
-schedule.every(2).minutes.do(postar_promocao)
+schedule.every(1).minutes.do(postar_promocao)
 
 print("🤖 Bot Shopee iniciado...")
 
