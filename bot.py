@@ -34,10 +34,18 @@ api_v1 = tweepy.API(auth)  # usado só para upload de mídia
 # ==============================
 CATEGORIAS = [
     "https://shopee.com.br/flash_sale",
-    "https://shopee.com.br/Electronicos-cat.11001048",
-    "https://shopee.com.br/Fashion-cat.11035647",
-    "https://shopee.com.br/Home-Life-cat.11035652",
-    "https://shopee.com.br/Adult-Products-cat.11044421"
+    "https://shopee.com.br/Celulares-e-Dispositivos-cat.11059988",
+    "https://shopee.com.br/Roupas-Masculinas-cat.11059986",
+    "https://shopee.com.br/Roupas-Plus-Size-cat.11116689",
+    "https://shopee.com.br/Sapatos-Masculinos-cat.11059987",
+    "https://shopee.com.br/Acess%C3%B3rios-de-Moda-cat.11059978",
+    "https://shopee.com.br/Eletrodom%C3%A9sticos-cat.11059984",
+    "https://shopee.com.br/Acess%C3%B3rios-para-Ve%C3%ADculos-cat.11117089",
+    "https://shopee.com.br/%C3%81udio-cat.11059971",
+    "https://shopee.com.br/Casa-e-Constru%C3%A7%C3%A3o-cat.11059983",
+    "https://shopee.com.br/Moda-Infantil-cat.11059973",
+    "https://shopee.com.br/Esportes-e-Lazer-cat.11059992",
+    
 ]
 
 # ==============================
