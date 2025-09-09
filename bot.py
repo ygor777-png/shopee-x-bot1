@@ -30,7 +30,7 @@ def postar_promocao():
     except Exception as e:
         print("⚠️ Erro ao postar:", e)
 
-schedule.every(2).min.do(postar_promocao)
+schedule.every(2).minutes.do(postar_promocao)
 
 print("🤖 Bot Shopee iniciado...")
 
