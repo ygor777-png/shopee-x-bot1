@@ -157,7 +157,7 @@ def postar_promocao():
 # ==============================
 # Agenda automática
 # ==============================
-schedule.every(1).minutes.do(postar_promocao)
+schedule.every(24).hours.do(postar_promocao)
 
 print("🤖 Bot Shopee Flash Sale iniciado...")
 
