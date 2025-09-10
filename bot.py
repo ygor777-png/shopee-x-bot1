@@ -30,7 +30,7 @@ auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET
 api_v1 = tweepy.API(auth)
 
 # ==============================
-# Cabeçalhos e cache
+# Cabeçalhos
 # ==============================
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
@@ -38,8 +38,6 @@ HEADERS = {
     "Referer": "https://shopee.com.br/",
     "x-api-source": "pc"
 }
-
-CACHE = set()
 
 # ==============================
 # Funções auxiliares
@@ -84,10 +82,8 @@ def buscar_flash_sale():
         for item in item_ids:
             itemid = item.get("itemid")
             shopid = item.get("shopid")
-            if not itemid or not shopid or itemid in CACHE:
+            if not itemid or not shopid:
                 continue
-
-            CACHE.add(itemid)
 
             # Buscar detalhes do produto
             detail_url = f"https://shopee.com.br/api/v4/item/get?itemid={itemid}&shopid={shopid}"
