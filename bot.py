@@ -30,24 +30,8 @@ auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET
 api_v1 = tweepy.API(auth)
 
 # ==============================
-# Categorias e Emojis
+# Cabeçalhos e cache
 # ==============================
-CATEGORIAS = {
-    "moda": 110443,
-    "casa": 110444,
-    "ofertas": 110445,
-    "tecnologia": 110429,
-    "adulto": 110451
-}
-
-EMOJIS = {
-    "moda": "👗",
-    "casa": "🏠",
-    "ofertas": "💥",
-    "tecnologia": "📱",
-    "adulto": "🔞"
-}
-
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept": "application/json",
@@ -80,50 +64,62 @@ def get_top_hashtags():
         print("⚠️ Erro trends:", e)
         return ["#Shopee"]
 
-def extrair_promocoes(data, emoji):
-    promocoes = []
-    for item in data.get("items", []):
-        produto = item.get("item_basic")
-        if produto and produto.get("price_before_discount", 0) > produto.get("price", 0):
-            itemid = produto["itemid"]
-            if itemid in CACHE:
-                continue
-            CACHE.add(itemid)
-            promocoes.append({
-                "titulo": f"{emoji} {produto['name']}",
-                "link": f"https://shopee.com.br/product/{produto['shopid']}/{itemid}",
-                "img": f"https://cf.shopee.com.br/file/{produto['image']}"
-            })
-    return promocoes
-
 # ==============================
-# Busca por categoria com desconto
+# Busca de produtos da Flash Sale
 # ==============================
-def buscar_promocoes():
-    categoria_nome, categoria_id = random.choice(list(CATEGORIAS.items()))
-    emoji = EMOJIS.get(categoria_nome, "🛍️")
-    print(f"🔍 Buscando por categoria: {categoria_nome}")
-
-    url = f"https://shopee.com.br/api/v4/search/search_items?by=pop&limit=20&match_id={categoria_id}&newest=0&order=desc&page_type=category"
+def buscar_flash_sale():
+    promotion_id = "175588157636612"
+    url = f"https://shopee.com.br/api/v4/flash_sale/get_all_itemids?promotionid={promotion_id}"
 
     try:
         r = requests.get(url, headers=HEADERS, timeout=15)
         data = r.json()
-        promocoes = extrair_promocoes(data, emoji)
+        item_ids = data.get("data", {}).get("item_brief_list", [])
 
-        if not promocoes:
-            print("⚠️ Nenhum item com desconto encontrado.")
-        return promocoes
+        if not item_ids:
+            print("⚠️ Nenhum item encontrado na Flash Sale.")
+            return []
+
+        produtos = []
+        for item in item_ids:
+            itemid = item.get("itemid")
+            shopid = item.get("shopid")
+            if not itemid or not shopid or itemid in CACHE:
+                continue
+
+            CACHE.add(itemid)
+
+            # Buscar detalhes do produto
+            detail_url = f"https://shopee.com.br/api/v4/item/get?itemid={itemid}&shopid={shopid}"
+            r2 = requests.get(detail_url, headers=HEADERS, timeout=10)
+            detail = r2.json().get("data")
+
+            if detail:
+                nome = detail.get("name")
+                imagem = detail.get("image")
+                preco = detail.get("price") / 100000
+                preco_antigo = detail.get("price_before_discount", 0) / 100000
+
+                if preco_antigo > preco:
+                    produtos.append({
+                        "titulo": nome,
+                        "link": f"https://shopee.com.br/product/{shopid}/{itemid}",
+                        "img": f"https://cf.shopee.com.br/file/{imagem}",
+                        "preco": preco,
+                        "preco_antigo": preco_antigo
+                    })
+
+        return produtos
 
     except Exception as e:
-        print("⚠️ Erro ao buscar promoções:", e)
+        print("⚠️ Erro ao buscar Flash Sale:", e)
         return []
 
 # ==============================
 # Postagem no X
 # ==============================
 def postar_promocao():
-    promocoes = buscar_promocoes()
+    promocoes = buscar_flash_sale()
     if not promocoes:
         return
 
@@ -132,7 +128,12 @@ def postar_promocao():
     hashtags = get_top_hashtags()
     titulo = gerar_titulo_criativo(promo["titulo"])
 
-    tweet = f"{titulo}\n👉 {link_afiliado}\n{' '.join(hashtags)}"
+    tweet = (
+        f"{titulo}\n"
+        f"De R${promo['preco_antigo']:.2f} por R${promo['preco']:.2f} 🔥\n"
+        f"👉 {link_afiliado}\n"
+        f"{' '.join(hashtags)}"
+    )
 
     if DEBUG:
         print("🧪 Modo DEBUG ativado. Tweet simulado:")
@@ -162,7 +163,7 @@ def postar_promocao():
 # ==============================
 schedule.every(1).minutes.do(postar_promocao)
 
-print("🤖 Bot Shopee iniciado...")
+print("🤖 Bot Shopee Flash Sale iniciado...")
 
 while True:
     schedule.run_pending()
