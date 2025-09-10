@@ -4,6 +4,7 @@ import random
 import schedule
 import time
 import requests
+import json
 
 # ==============================
 # Configurações do Twitter (X)
@@ -25,29 +26,56 @@ auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET
 api_v1 = tweepy.API(auth)
 
 # ==============================
-# Busca na Shopee (pública via JSON)
+# Categorias
 # ==============================
 CATEGORIAS = ["fone bluetooth", "tênis esportivo", "roupa feminina", "decoração casa", "sex shop"]
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+    "Referer": "https://shopee.com.br/",
+    "x-api-source": "pc"
+}
 
 def buscar_promocoes():
     termo = random.choice(CATEGORIAS)
     url = f"https://shopee.com.br/api/v4/search/search_items?by=relevancy&keyword={termo}&limit=20&newest=0&order=desc&page_type=search"
 
     try:
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        r = requests.get(url, headers=HEADERS, timeout=15)
         data = r.json()
 
         promocoes = []
+
+        # Estrutura 1: data["items"]
         if "items" in data:
             for item in data["items"]:
-                produto = item["item_basic"]
-                promocoes.append({
-                    "titulo": produto["name"],
-                    "link": f"https://shopee.com.br/product/{produto['shopid']}/{produto['itemid']}",
-                    "img": f"https://cf.shopee.com.br/file/{produto['image']}"
-                })
+                produto = item.get("item_basic")
+                if produto:
+                    promocoes.append({
+                        "titulo": produto["name"],
+                        "link": f"https://shopee.com.br/product/{produto['shopid']}/{produto['itemid']}",
+                        "img": f"https://cf.shopee.com.br/file/{produto['image']}"
+                    })
+
+        # Estrutura 2: data["data"]["sections"]
+        elif "data" in data and "sections" in data["data"]:
+            for section in data["data"]["sections"]:
+                for item in section.get("items", []):
+                    produto = item.get("item_basic")
+                    if produto:
+                        promocoes.append({
+                            "titulo": produto["name"],
+                            "link": f"https://shopee.com.br/product/{produto['shopid']}/{produto['itemid']}",
+                            "img": f"https://cf.shopee.com.br/file/{produto['image']}"
+                        })
+
+        if not promocoes:
+            print("⚠️ Nenhum item encontrado, resposta bruta:")
+            print(json.dumps(data, indent=2))
 
         return promocoes
+
     except Exception as e:
         print("⚠️ Erro ao buscar promoções:", e)
         return []
@@ -99,7 +127,7 @@ def postar_promocao():
         print("⚠️ Erro ao postar:", e)
 
 # ==============================
-# Agenda: a cada 2h
+# Agenda: a cada 1 minuto (teste)
 # ==============================
 schedule.every(1).minutes.do(postar_promocao)
 
