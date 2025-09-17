@@ -1,20 +1,27 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-import os
+import os, requests, re
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
 
-TOKEN = os.getenv("BOT_TOKEN")  # Defina a variável de ambiente no Railway
+TOKEN = os.getenv("BOT_TOKEN")
 
-def start(update, context):
-    update.message.reply_text("Me envie o link do produto para eu criar o anúncio!")
+GRUPO_ENTRADA_ID = -1001234567890  # substitua pelo ID do grupo 1
+GRUPO_SAIDA_ID = -1009876543210   # substitua pelo ID do grupo 2
 
-def criar_anuncio(update, context):
-    link = update.message.text.strip()
+def extrair_titulo(link):
+    try:
+        r = requests.get(link, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        soup = BeautifulSoup(r.text, "html.parser")
+        titulo = soup.title.string.strip()
+        return titulo[:80]
+    except:
+        return "Oferta Especial 🔥"
 
-    # Aqui você pode futuramente integrar com IA ou scraping para pegar título/preço
-    titulo = "Oferta Imperdível 🔥"
+def criar_anuncio(link, titulo):
     preco_anterior = "R$ 199,90"
     preco_atual = "R$ 99,90"
 
-    anuncio = f"""
+    return f"""
 🔥 {titulo} 🔥
 
 💰 De: {preco_anterior}  
@@ -22,16 +29,60 @@ def criar_anuncio(update, context):
 
 👉 Garanta aqui: {link}
 """
-    update.message.reply_text(anuncio)
+
+def processar_mensagem(update, context):
+    if update.message.chat_id != GRUPO_ENTRADA_ID:
+        return
+
+    texto = update.message.text.strip()
+
+    # Regex para capturar link + horário opcional (HH:MM)
+    match = re.match(r"(https?://\S+)(?:\s+(\d{1,2}:\d{2}))?", texto)
+    if not match:
+        update.message.reply_text("Formato inválido. Envie: link [HH:MM]")
+        return
+
+    link = match.group(1)
+    horario = match.group(2)
+
+    titulo = extrair_titulo(link)
+    anuncio = criar_anuncio(link, titulo)
+
+    if horario:
+        try:
+            agora = datetime.now()
+            hora, minuto = map(int, horario.split(":"))
+            agendamento = agora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+
+            # se o horário já passou hoje, agenda para amanhã
+            if agendamento < agora:
+                agendamento += timedelta(days=1)
+
+            delay = (agendamento - agora).total_seconds()
+
+            context.job_queue.run_once(
+                lambda ctx: ctx.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio),
+                delay
+            )
+
+            update.message.reply_text(f"✅ Anúncio agendado para {agendamento.strftime('%H:%M')}")
+        except:
+            update.message.reply_text("⚠️ Horário inválido. Use formato HH:MM")
+    else:
+        # envia imediatamente
+        context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
+        update.message.reply_text("✅ Anúncio enviado imediatamente")
+
+def start(update, context):
+    update.message.reply_text("Envie: link [HH:MM] no grupo de entrada.")
 
 def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, criar_anuncio))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, processar_mensagem))
 
-    # Railway precisa rodar em polling
     updater.start_polling()
     updater.idle()
 
