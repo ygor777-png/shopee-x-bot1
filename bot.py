@@ -15,6 +15,10 @@ def extrair_titulo(link):
     try:
         r = requests.get(link, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
         soup = BeautifulSoup(r.text, "html.parser")
+        # tenta pegar meta og:title (mais confiável que <title>)
+        meta_title = soup.find("meta", property="og:title")
+        if meta_title and meta_title.get("content"):
+            return meta_title["content"].strip()
         if soup.title:
             return soup.title.string.strip()
         return "Produto em Oferta"
@@ -22,7 +26,7 @@ def extrair_titulo(link):
         return "Produto em Oferta"
 
 def gerar_titulo_criativo(titulo_original):
-    """Transforma o título cru em algo mais chamativo."""
+    """Transforma o título cru em algo mais chamativo + nome do produto."""
     prefixos = [
         "🔥 Oferta Imperdível:",
         "💥 Promoção Relâmpago:",
@@ -32,8 +36,9 @@ def gerar_titulo_criativo(titulo_original):
     ]
     prefixo = random.choice(prefixos)
 
+    # pega até 8 palavras do título original para não ficar gigante
     palavras = titulo_original.split()
-    resumo = " ".join(palavras[:6])  # pega até 6 palavras do título original
+    resumo = " ".join(palavras[:8])
 
     return f"{prefixo} {resumo}"
 
@@ -80,7 +85,7 @@ def processar_mensagem(update, context):
     preco_atual = match.group(3)
     horario = match.group(4)
 
-    # Extrai título cru e gera criativo
+    # Extrai título cru e gera criativo com nome do produto
     titulo_original = extrair_titulo(link)
     titulo = gerar_titulo_criativo(titulo_original)
 
