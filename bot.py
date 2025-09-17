@@ -16,7 +16,7 @@ def extrair_titulo(link):
         titulo = soup.title.string.strip()
         return titulo[:80]
     except:
-        return "Oferta Especial 🔥"
+        return "Oferta Especial! 🔥"
 
 def criar_anuncio(link, titulo):
     preco_anterior = "R$ 199,90"
