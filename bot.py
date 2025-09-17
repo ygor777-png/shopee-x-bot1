@@ -5,9 +5,9 @@ from datetime import datetime, timedelta
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# IDs dos grupos (substitua pelos seus)
-GRUPO_ENTRADA_ID = -4653176769  # Grupo onde você manda os links
-GRUPO_SAIDA_ID = -1001592474533   # Grupo onde o bot posta os anúncios
+# Coloque valores provisórios, vamos descobrir os IDs reais no log
+GRUPO_ENTRADA_ID = -1001234567890
+GRUPO_SAIDA_ID = -1009876543210
 
 def extrair_titulo(link):
     try:
@@ -32,10 +32,16 @@ def criar_anuncio(link, titulo):
 """
 
 def processar_mensagem(update, context):
-    # garante que existe uma mensagem de texto
+    # DEBUG: imprime tudo que chega
+    if update.message:
+        print("📩 Mensagem recebida:")
+        print("Chat ID:", update.message.chat_id)
+        print("Texto:", update.message.text)
+
     if not update.message or not update.message.text:
         return  
 
+    # Só processa se for do grupo de entrada
     if update.message.chat_id != GRUPO_ENTRADA_ID:
         return
 
@@ -59,7 +65,6 @@ def processar_mensagem(update, context):
             hora, minuto = map(int, horario.split(":"))
             agendamento = agora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
 
-            # se o horário já passou hoje, agenda para amanhã
             if agendamento < agora:
                 agendamento += timedelta(days=1)
 
@@ -74,7 +79,6 @@ def processar_mensagem(update, context):
         except:
             update.message.reply_text("⚠️ Horário inválido. Use formato HH:MM")
     else:
-        # envia imediatamente
         context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
         update.message.reply_text("✅ Link enviado imediatamente")
 
