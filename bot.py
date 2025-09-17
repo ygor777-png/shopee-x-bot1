@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 TOKEN = os.getenv("BOT_TOKEN")
 
 # Coloque valores provisórios, vamos descobrir os IDs reais no log
-GRUPO_ENTRADA_ID = -1001234567890
-GRUPO_SAIDA_ID = -1009876543210
+GRUPO_ENTRADA_ID = -4653176769
+GRUPO_SAIDA_ID = -1001592474533
 
 def extrair_titulo(link):
     try:
