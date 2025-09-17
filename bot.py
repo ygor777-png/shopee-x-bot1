@@ -1,52 +1,39 @@
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import os
-import requests
-from bs4 import BeautifulSoup
-from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
-# Função para extrair dados do produto
-def extrair_dados(link):
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    res = requests.get(link, headers=headers)
-    soup = BeautifulSoup(res.text, 'html.parser')
+TOKEN = os.getenv("BOT_TOKEN")  # Defina a variável de ambiente no Railway
 
-    nome = soup.find('title').text.strip()
-    preco_tags = soup.find_all('div', class_='pmm-price-original')
-    preco_original = preco_tags[0].text.strip() if preco_tags else "Não encontrado"
-    preco_promocional = soup.find('div', class_='pmm-price-final').text.strip() if soup.find('div', class_='pmm-price-final') else "Não encontrado"
+def start(update, context):
+    update.message.reply_text("Me envie o link do produto para eu criar o anúncio!")
 
-    return {
-        'nome': nome,
-        'preco_original': preco_original,
-        'preco_promocional': preco_promocional
-    }
+def criar_anuncio(update, context):
+    link = update.message.text.strip()
 
-# Função para gerar título criativo (placeholder)
-def gerar_titulo(nome):
-    return f"{nome} — Segurança inteligente por um precinho!"
+    # Aqui você pode futuramente integrar com IA ou scraping para pegar título/preço
+    titulo = "Oferta Imperdível 🔥"
+    preco_anterior = "R$ 199,90"
+    preco_atual = "R$ 99,90"
 
-# Função principal do bot
-async def responder(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    link = update.message.text
-    if "shopee.com.br" in link:
-        dados = extrair_dados(link)
-        titulo = gerar_titulo(dados['nome'])
+    anuncio = f"""
+🔥 {titulo} 🔥
 
-        anuncio = f"""
-🎁 Produto: {titulo}
-🔥 De: {dados['preco_original']}
-💰 Por: {dados['preco_promocional']}
+💰 De: {preco_anterior}  
+✅ Por: {preco_atual}  
 
-🛒 Compre aqui: {link}
+👉 Garanta aqui: {link}
 """
-        await update.message.reply_text(anuncio)
+    update.message.reply_text(anuncio)
 
-# Inicialização do bot
 def main():
-    token = os.getenv("TELEGRAM_TOKEN")
-    app = ApplicationBuilder().token(token).build()
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder))
-    app.run_polling()
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, criar_anuncio))
+
+    # Railway precisa rodar em polling
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == "__main__":
     main()
