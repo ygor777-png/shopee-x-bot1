@@ -1,13 +1,16 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-import os, re, random, requests
+import os, re, random, requests, pytz
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 
 TOKEN = os.getenv("BOT_TOKEN")
 
 # Substitua pelos IDs reais dos grupos
-GRUPO_ENTRADA_ID = -4653176769  # Grupo onde você manda os links
-GRUPO_SAIDA_ID = -1001592474533   # Grupo onde o bot posta os anúncios
+GRUPO_ENTRADA_ID = -1001234567890  # Grupo onde você manda os links
+GRUPO_SAIDA_ID = -1009876543210   # Grupo onde o bot posta os anúncios
+
+# Timezone Brasil
+TZ = pytz.timezone("America/Sao_Paulo")
 
 # -------- Funções utilitárias --------
 def extrair_titulo(link):
@@ -63,6 +66,11 @@ def criar_anuncio(link, titulo, preco_anterior, preco_atual):
 👉 Garanta aqui: {link}
 """
 
+# -------- Função para enviar anúncio agendado --------
+def enviar_anuncio(context):
+    job = context.job
+    context.bot.send_message(chat_id=job.context["chat_id"], text=job.context["anuncio"])
+
 # -------- Processamento da mensagem --------
 def processar_mensagem(update, context):
     if not update.message or not update.message.text:
@@ -93,7 +101,7 @@ def processar_mensagem(update, context):
 
     if horario:
         try:
-            agora = datetime.now()
+            agora = datetime.now(TZ)
             hora, minuto = map(int, horario.split(":"))
             agendamento = agora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
 
@@ -103,13 +111,14 @@ def processar_mensagem(update, context):
             delay = (agendamento - agora).total_seconds()
 
             context.job_queue.run_once(
-                lambda ctx: ctx.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio),
-                delay
+                enviar_anuncio,
+                delay,
+                context={"chat_id": GRUPO_SAIDA_ID, "anuncio": anuncio}
             )
 
             update.message.reply_text(f"✅ Link agendado para {agendamento.strftime('%H:%M')} com título: {titulo}")
-        except:
-            update.message.reply_text("⚠️ Horário inválido. Use formato HH:MM")
+        except Exception as e:
+            update.message.reply_text(f"⚠️ Horário inválido. Use formato HH:MM. Erro: {e}")
     else:
         context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
         update.message.reply_text(f"✅ Link enviado imediatamente com título: {titulo}")
