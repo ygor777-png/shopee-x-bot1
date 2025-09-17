@@ -9,19 +9,57 @@ TOKEN = os.getenv("BOT_TOKEN")
 GRUPO_ENTRADA_ID = -4653176769  # Grupo onde você manda os links
 GRUPO_SAIDA_ID = -1001592474533   # Grupo onde o bot posta os anúncios
 
-def extrair_titulo(link):
+# -------- Funções de scraping --------
+def extrair_dados_shopee(link):
     try:
-        r = requests.get(link, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        r = requests.get(link, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
         soup = BeautifulSoup(r.text, "html.parser")
-        titulo = soup.title.string.strip()
-        return titulo[:80]  # corta se for muito longo
+
+        # Título do produto
+        titulo = soup.find("meta", property="og:title")
+        titulo = titulo["content"].strip() if titulo else "Produto sem título"
+
+        # Preço atual (vem no og:description ou em spans)
+        preco_atual = None
+        desc = soup.find("meta", property="og:description")
+        if desc:
+            match = re.search(r"R\$ ?\d+[\.,]?\d*", desc["content"])
+            if match:
+                preco_atual = match.group(0)
+
+        # Preço anterior (tentativa de pegar o primeiro valor diferente)
+        preco_anterior = None
+        spans = soup.find_all("span")
+        for s in spans:
+            txt = s.get_text()
+            if "R$" in txt:
+                if not preco_anterior:
+                    preco_anterior = txt
+                elif not preco_atual:
+                    preco_atual = txt
+
+        return titulo, preco_anterior or "N/A", preco_atual or "N/A"
+    except Exception as e:
+        print("Erro ao extrair Shopee:", e)
+        return "Produto", "N/A", "N/A"
+
+def extrair_dados_generico(link):
+    try:
+        r = requests.get(link, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        soup = BeautifulSoup(r.text, "html.parser")
+        titulo = soup.title.string.strip() if soup.title else "Produto"
+        return titulo[:80], "N/A", "N/A"
     except:
-        return "Oferta Especial 🔥"
+        return "Produto", "N/A", "N/A"
 
-def criar_anuncio(link, titulo):
-    preco_anterior = "R$ 199,90"
-    preco_atual = "R$ 99,90"
+def extrair_dados(link):
+    if "shopee.com" in link:
+        return extrair_dados_shopee(link)
+    else:
+        return extrair_dados_generico(link)
 
+# -------- Criação do anúncio --------
+def criar_anuncio(link, titulo, preco_anterior, preco_atual):
     return f"""
 🔥 {titulo} 🔥
 
@@ -31,6 +69,7 @@ def criar_anuncio(link, titulo):
 👉 Garanta aqui: {link}
 """
 
+# -------- Processamento da mensagem --------
 def processar_mensagem(update, context):
     if not update.message or not update.message.text:
         return  
@@ -49,9 +88,9 @@ def processar_mensagem(update, context):
     link = match.group(1)
     horario = match.group(2)
 
-    # agora pega o título real do produto
-    titulo = extrair_titulo(link)
-    anuncio = criar_anuncio(link, titulo)
+    # Extrai dados reais
+    titulo, preco_anterior, preco_atual = extrair_dados(link)
+    anuncio = criar_anuncio(link, titulo, preco_anterior, preco_atual)
 
     if horario:
         try:
