@@ -1,5 +1,5 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-import os, requests, re
+import os, re, random, requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 
@@ -9,62 +9,51 @@ TOKEN = os.getenv("BOT_TOKEN")
 GRUPO_ENTRADA_ID = -4653176769  # Grupo onde você manda os links
 GRUPO_SAIDA_ID = -1001592474533   # Grupo onde o bot posta os anúncios
 
-# -------- Funções de scraping --------
-def extrair_dados_shopee(link):
+# -------- Funções utilitárias --------
+def extrair_titulo(link):
+    """Extrai o título cru da página (fallback simples)."""
     try:
         r = requests.get(link, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
         soup = BeautifulSoup(r.text, "html.parser")
-
-        # Título do produto
-        titulo = soup.find("meta", property="og:title")
-        titulo = titulo["content"].strip() if titulo else "Produto sem título"
-
-        # Preço atual (vem no og:description ou em spans)
-        preco_atual = None
-        desc = soup.find("meta", property="og:description")
-        if desc:
-            match = re.search(r"R\$ ?\d+[\.,]?\d*", desc["content"])
-            if match:
-                preco_atual = match.group(0)
-
-        # Preço anterior (tentativa de pegar o primeiro valor diferente)
-        preco_anterior = None
-        spans = soup.find_all("span")
-        for s in spans:
-            txt = s.get_text()
-            if "R$" in txt:
-                if not preco_anterior:
-                    preco_anterior = txt
-                elif not preco_atual:
-                    preco_atual = txt
-
-        return titulo, preco_anterior or "N/A", preco_atual or "N/A"
-    except Exception as e:
-        print("Erro ao extrair Shopee:", e)
-        return "Produto", "N/A", "N/A"
-
-def extrair_dados_generico(link):
-    try:
-        r = requests.get(link, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
-        soup = BeautifulSoup(r.text, "html.parser")
-        titulo = soup.title.string.strip() if soup.title else "Produto"
-        return titulo[:80], "N/A", "N/A"
+        if soup.title:
+            return soup.title.string.strip()
+        return "Produto em Oferta"
     except:
-        return "Produto", "N/A", "N/A"
+        return "Produto em Oferta"
 
-def extrair_dados(link):
-    if "shopee.com" in link:
-        return extrair_dados_shopee(link)
-    else:
-        return extrair_dados_generico(link)
+def gerar_titulo_criativo(titulo_original):
+    """Transforma o título cru em algo mais chamativo."""
+    prefixos = [
+        "🔥 Oferta Imperdível:",
+        "💥 Promoção Relâmpago:",
+        "✨ Destaque do Dia:",
+        "🎯 Achado Especial:",
+        "🛒 Super Desconto:"
+    ]
+    prefixo = random.choice(prefixos)
 
-# -------- Criação do anúncio --------
+    palavras = titulo_original.split()
+    resumo = " ".join(palavras[:6])  # pega até 6 palavras do título original
+
+    return f"{prefixo} {resumo}"
+
+def gerar_texto_desconto(preco_anterior, preco_atual):
+    """Gera frases variadas para destacar o desconto."""
+    modelos = [
+        f"💰 De: {preco_anterior}\n✅ Por: {preco_atual}",
+        f"💸 Antes {preco_anterior}, agora só {preco_atual}!",
+        f"🔥 De {preco_anterior} caiu para {preco_atual}!",
+        f"🎉 De {preco_anterior} por apenas {preco_atual}!",
+        f"⚡ Aproveite: {preco_anterior} ➝ {preco_atual}"
+    ]
+    return random.choice(modelos)
+
 def criar_anuncio(link, titulo, preco_anterior, preco_atual):
+    desconto = gerar_texto_desconto(preco_anterior, preco_atual)
     return f"""
-🔥 {titulo} 🔥
+{titulo}
 
-💰 De: {preco_anterior}  
-✅ Por: {preco_atual}  
+{desconto}
 
 👉 Garanta aqui: {link}
 """
@@ -79,17 +68,22 @@ def processar_mensagem(update, context):
 
     texto = update.message.text.strip()
 
-    # Regex para capturar link + horário opcional (HH:MM)
-    match = re.match(r"(https?://\S+)(?:\s+(\d{1,2}:\d{2}))?", texto)
+    # Formato esperado:
+    # link preço_anterior preço_atual [HH:MM]
+    match = re.match(r"(https?://\S+)\s+([\w\.,R\$]+)\s+([\w\.,R\$]+)(?:\s+(\d{1,2}:\d{2}))?", texto)
     if not match:
-        update.message.reply_text("Formato inválido. Envie: link [HH:MM]")
+        update.message.reply_text("Formato inválido. Use: link preço_anterior preço_atual [HH:MM]")
         return
 
     link = match.group(1)
-    horario = match.group(2)
+    preco_anterior = match.group(2)
+    preco_atual = match.group(3)
+    horario = match.group(4)
 
-    # Extrai dados reais
-    titulo, preco_anterior, preco_atual = extrair_dados(link)
+    # Extrai título cru e gera criativo
+    titulo_original = extrair_titulo(link)
+    titulo = gerar_titulo_criativo(titulo_original)
+
     anuncio = criar_anuncio(link, titulo, preco_anterior, preco_atual)
 
     if horario:
@@ -116,7 +110,7 @@ def processar_mensagem(update, context):
         update.message.reply_text(f"✅ Link enviado imediatamente com título: {titulo}")
 
 def start(update, context):
-    update.message.reply_text("Envie: link [HH:MM] no grupo de entrada.")
+    update.message.reply_text("Envie: link preço_anterior preço_atual [HH:MM] no grupo de entrada.")
 
 def main():
     updater = Updater(TOKEN, use_context=True)
