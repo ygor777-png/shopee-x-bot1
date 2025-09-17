@@ -5,18 +5,18 @@ from datetime import datetime, timedelta
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# Coloque valores provisórios, vamos descobrir os IDs reais no log
-GRUPO_ENTRADA_ID = -4653176769
-GRUPO_SAIDA_ID = -1001592474533
+# Substitua pelos IDs reais dos grupos
+GRUPO_ENTRADA_ID = -1001234567890  # Grupo onde você manda os links
+GRUPO_SAIDA_ID = -1009876543210   # Grupo onde o bot posta os anúncios
 
 def extrair_titulo(link):
     try:
         r = requests.get(link, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
         soup = BeautifulSoup(r.text, "html.parser")
         titulo = soup.title.string.strip()
-        return titulo[:80]
+        return titulo[:80]  # corta se for muito longo
     except:
-        return "Oferta Especial! 🔥"
+        return "Oferta Especial 🔥"
 
 def criar_anuncio(link, titulo):
     preco_anterior = "R$ 199,90"
@@ -32,16 +32,9 @@ def criar_anuncio(link, titulo):
 """
 
 def processar_mensagem(update, context):
-    # DEBUG: imprime tudo que chega
-    if update.message:
-        print("📩 Mensagem recebida:")
-        print("Chat ID:", update.message.chat_id)
-        print("Texto:", update.message.text)
-
     if not update.message or not update.message.text:
         return  
 
-    # Só processa se for do grupo de entrada
     if update.message.chat_id != GRUPO_ENTRADA_ID:
         return
 
@@ -56,6 +49,7 @@ def processar_mensagem(update, context):
     link = match.group(1)
     horario = match.group(2)
 
+    # agora pega o título real do produto
     titulo = extrair_titulo(link)
     anuncio = criar_anuncio(link, titulo)
 
@@ -75,12 +69,12 @@ def processar_mensagem(update, context):
                 delay
             )
 
-            update.message.reply_text(f"✅ Link agendado para {agendamento.strftime('%H:%M')}")
+            update.message.reply_text(f"✅ Link agendado para {agendamento.strftime('%H:%M')} com título: {titulo}")
         except:
             update.message.reply_text("⚠️ Horário inválido. Use formato HH:MM")
     else:
         context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
-        update.message.reply_text("✅ Link enviado imediatamente")
+        update.message.reply_text(f"✅ Link enviado imediatamente com título: {titulo}")
 
 def start(update, context):
     update.message.reply_text("Envie: link [HH:MM] no grupo de entrada.")
