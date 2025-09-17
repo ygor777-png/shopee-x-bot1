@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 TOKEN = os.getenv("BOT_TOKEN")
 
 # Substitua pelos IDs reais dos grupos
-GRUPO_ENTRADA_ID = -1001234567890  # Grupo onde você manda os links
-GRUPO_SAIDA_ID = -1009876543210   # Grupo onde o bot posta os anúncios
+GRUPO_ENTRADA_ID = -4653176769  # Grupo onde você manda os links
+GRUPO_SAIDA_ID = -1001592474533   # Grupo onde o bot posta os anúncios
 
 # Timezone Brasil
 TZ = pytz.timezone("America/Sao_Paulo")
