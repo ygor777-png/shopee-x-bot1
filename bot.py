@@ -34,7 +34,6 @@ def encurtar_link(link):
         return s.tinyurl.short(link)
     except:
         return link
-
 def gerar_titulo_criativo(titulo_manual):
     prefixos = [
         "🔥 Oferta Imperdível:",
@@ -112,12 +111,13 @@ def criar_anuncio(link, titulo, precos):
 
 {texto_preco}
 
-👉 Garanta aqui: {link}
+👉 Compre por aqui: {link}
+
+⚠️ Corre que acaba rapido!
 
 🌐 Siga nossas redes sociais:
 {link_central_encurtado}"""
 
-# -------- Função para enviar anúncio --------
 def enviar_anuncio(context):
     job = context.job
     anuncio = job.context["anuncio"]
@@ -145,7 +145,6 @@ def enviar_anuncio(context):
             reply_markup=reply_markup
         )
 
-# -------- Processamento da mensagem --------
 def processar_mensagem(update, context):
     if not update.message or not update.message.text:
         return  
@@ -196,4 +195,25 @@ def processar_mensagem(update, context):
     else:
         context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
         try:
-            texto_t
+            texto_tweet = anuncio.replace("\n", " ")
+            if len(texto_tweet) > 280:
+                texto_tweet = texto_tweet[:277] + "..."
+
+def start(update, context):
+    update.message.reply_text(
+        'Envie: link "Título do Produto" preço_anterior preço_atual [HH:MM] '
+        'ou link "Título do Produto" preço [HH:MM] no grupo de entrada.'
+    )
+
+def main():
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, processar_mensagem))
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == "__main__":
+    main()
