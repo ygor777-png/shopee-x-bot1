@@ -18,6 +18,10 @@ LINK_CENTRAL = "https://atom.bio/ofertas_express"
 # Lista de links CSV (separe por vírgula no .env)
 CSV_LINKS = [link.strip() for link in os.getenv("CSV_URLS", "").split(",") if link.strip()]
 
+# Variáveis globais para controle de envio
+enviados_global = set()
+indice_global = 0
+
 def encurtar_link(link):
     try:
         s = pyshorteners.Shortener()
@@ -68,7 +72,6 @@ def gerar_texto_preco(precos):
 
 def criar_anuncio(link, titulo, precos):
     texto_preco = gerar_texto_preco(precos)
-    link_central_encurtado = encurtar_link(LINK_CENTRAL)
     return f"""{titulo}
 
 {texto_preco}
@@ -78,7 +81,7 @@ def criar_anuncio(link, titulo, precos):
 ⚠️ Corre que acaba rapido!
 
 🌐 Siga nossas redes sociais:
-{link_central_encurtado}"""
+{LINK_CENTRAL}"""
 
 # -------- Mapeamento automático de colunas --------
 def mapear_colunas(df):
@@ -91,20 +94,23 @@ def mapear_colunas(df):
         return None
 
     return {
-        "link": achar("link", "product_link", "produto_url", "url do produto"),
+        "link": achar("link", "url", "product_link", "produto_url", "url do produto"),
         "titulo": achar("titulo", "title", "name", "produto", "product_name", "nome"),
-        "preco": achar("sale_price", "price", "valor", "current_price", "preço atual"),
+        "preco": achar("preco", "sale_price", "valor", "current_price", "preço atual"),
         "preco_antigo": achar("price", "old_price", "preco_original", "original_price", "preço original")
     }
 
-# -------- Processar CSV --------
+# -------- Processar CSV (envia 1 produto por execução e não repete) --------
 async def processar_csv(context: ContextTypes.DEFAULT_TYPE):
-    enviados = set()
+    global enviados_global, indice_global
+
     for url_csv in CSV_LINKS:
         try:
+            # Baixa e lê o CSV
             resp = requests.get(url_csv)
             df = pd.read_csv(BytesIO(resp.content))
 
+            # Mapeia colunas
             mapeamento = mapear_colunas(df)
             if not mapeamento["link"] or not mapeamento["titulo"] or not mapeamento["preco"]:
                 colunas_encontradas = ", ".join(df.columns)
@@ -117,25 +123,34 @@ async def processar_csv(context: ContextTypes.DEFAULT_TYPE):
                 )
                 continue
 
-            for _, row in df.iterrows():
-                link_produto = str(row[mapeamento["link"]]).strip()
-                if link_produto in enviados:
-                    continue
-                enviados.add(link_produto)
+            # Se chegou no fim do CSV, recomeça
+            if indice_global >= len(df):
+                indice_global = 0
 
-                titulo_manual = str(row[mapeamento["titulo"]]).strip()
-                preco_atual = formatar_preco(row[mapeamento["preco"]])
-                preco_antigo = None
-                if mapeamento["preco_antigo"] and pd.notna(row[mapeamento["preco_antigo"]]):
-                    preco_antigo = formatar_preco(row[mapeamento["preco_antigo"]])
+            # Pega apenas 1 produto por execução
+            row = df.iloc[indice_global]
+            indice_global += 1
 
-                precos = [preco_atual] if not preco_antigo else [preco_antigo, preco_atual]
-                link_encurtado = encurtar_link(link_produto)
-                titulo = gerar_titulo_criativo(titulo_manual)
-                anuncio = criar_anuncio(link_encurtado, titulo, precos)
+            link_produto = str(row[mapeamento["link"]]).strip()
 
-                await context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
-                time_module.sleep(5)  # intervalo entre envios
+            # Se já foi enviado antes, pula
+            if link_produto in enviados_global:
+                return
+            enviados_global.add(link_produto)
+
+            titulo_manual = str(row[mapeamento["titulo"]]).strip()
+            preco_atual = formatar_preco(row[mapeamento["preco"]])
+            preco_antigo = None
+            if mapeamento["preco_antigo"] and pd.notna(row[mapeamento["preco_antigo"]]):
+                preco_antigo = formatar_preco(row[mapeamento["preco_antigo"]])
+
+            precos = [preco_atual] if not preco_antigo else [preco_antigo, preco_atual]
+            link_encurtado = encurtar_link(link_produto)
+            titulo = gerar_titulo_criativo(titulo_manual)
+            anuncio = criar_anuncio(link_encurtado, titulo, precos)
+
+            await context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
+
         except Exception as e:
             await context.bot.send_message(chat_id=ADMIN_ID, text=f"⚠️ Erro ao processar CSV {url_csv}: {e}")
 
@@ -245,4 +260,4 @@ def main():
     application.run_polling()
 
 if __name__ == "__main__":
-    main
+    main()
