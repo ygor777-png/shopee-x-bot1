@@ -1,5 +1,6 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-import os, re, random, requests, pytz, tweepy, pyshorteners
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+import os, re, random, requests, pytz, tweepy, pyshorteners, urllib.parse
 from datetime import datetime, timedelta
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -8,8 +9,8 @@ TOKEN = os.getenv("BOT_TOKEN")
 GRUPO_ENTRADA_ID = -1001234567890
 GRUPO_SAIDA_ID = -1009876543210
 
-# Seu user_id do Telegram
-ADMIN_ID = 1420827874  # <<< coloque o seu aqui
+# Seu user_id do Telegram (descubra com @userinfobot e coloque aqui)
+ADMIN_ID = 1420827874  # <<< SUBSTITUA PELO SEU ID REAL
 
 # Timezone Brasil
 TZ = pytz.timezone("America/Sao_Paulo")
@@ -23,6 +24,10 @@ ACCESS_TOKEN_SECRET = os.getenv("ACCESS_TOKEN_SECRET")
 auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET_KEY, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
 twitter_api = tweepy.API(auth)
 
+# -------- Links fixos das redes sociais --------
+LINK_TELEGRAM = "https://t.me/+aA2_TSZVh2E2NzRh"
+LINK_X = "https://x.com/ofer_shopee"
+
 # -------- Funções utilitárias --------
 def encurtar_link(link):
     try:
@@ -32,7 +37,6 @@ def encurtar_link(link):
         return link
 
 def gerar_titulo_criativo(titulo_manual):
-    """Adiciona prefixo criativo ao título informado manualmente"""
     prefixos = [
         "🔥 Oferta Imperdível:",
         "💥 Promoção Relâmpago:",
@@ -43,23 +47,37 @@ def gerar_titulo_criativo(titulo_manual):
     prefixo = random.choice(prefixos)
     return f"{prefixo} {titulo_manual}"
 
-def gerar_texto_desconto(preco_anterior, preco_atual):
-    modelos = [
-        f"💰 De: {preco_anterior}\n✅ Por: {preco_atual}",
-        f"💸 Antes {preco_anterior}, agora só {preco_atual}!",
-        f"🔥 De {preco_anterior} caiu para {preco_atual}!",
-        f"🎉 De {preco_anterior} por apenas {preco_atual}!",
-        f"⚡ Aproveite: {preco_anterior} ➝ {preco_atual}"
-    ]
-    return random.choice(modelos)
+def gerar_texto_preco(precos):
+    if len(precos) == 1:
+        preco = precos[0]
+        return f"💰 Por: {preco}"
+    else:
+        preco_anterior, preco_atual = precos
+        modelos = [
+            f"💰 De: {preco_anterior}\n✅ Por: {preco_atual}",
+            f"💸 Antes {preco_anterior}, agora só {preco_atual}!",
+            f"🔥 De {preco_anterior} caiu para {preco_atual}!",
+            f"🎉 De {preco_anterior} por apenas {preco_atual}!",
+            f"⚡ Aproveite: {preco_anterior} ➝ {preco_atual}"
+        ]
+        return random.choice(modelos)
 
-def criar_anuncio(link, titulo, preco_anterior, preco_atual):
-    desconto = gerar_texto_desconto(preco_anterior, preco_atual)
+def criar_anuncio(link, titulo, precos):
+    texto_preco = gerar_texto_preco(precos)
+
+    # Encurta os links fixos
+    link_telegram = encurtar_link(LINK_TELEGRAM)
+    link_x = encurtar_link(LINK_X)
+
     return f"""{titulo}
 
-{desconto}
+{texto_preco}
 
-👉 Garanta aqui: {link}"""
+👉 Garanta aqui: {link}
+
+🌐 Siga nossas redes sociais:
+📲 Telegram: {link_telegram}
+🐦 X: {link_x}"""
 
 # -------- Função para enviar anúncio --------
 def enviar_anuncio(context):
@@ -77,9 +95,16 @@ def enviar_anuncio(context):
         twitter_api.update_status(texto_tweet)
     except Exception as e:
         print("Erro ao postar no X:", e)
+
+        # Monta botão de compartilhamento
+        url_tweet = "https://twitter.com/intent/tweet?text=" + urllib.parse.quote(texto_tweet)
+        keyboard = [[InlineKeyboardButton("🐦 Compartilhar no X", url=url_tweet)]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
         context.bot.send_message(
             chat_id=ADMIN_ID,
-            text=f"⚠️ Não consegui postar no X.\nAqui está o texto pronto:\n\n{anuncio}"
+            text=f"⚠️ Não consegui postar no X.\nAqui está o texto pronto:\n\n{anuncio}",
+            reply_markup=reply_markup
         )
 
 # -------- Processamento da mensagem --------
@@ -92,21 +117,23 @@ def processar_mensagem(update, context):
 
     texto = update.message.text.strip()
 
-    # Formato esperado: link "Título do Produto" preço_anterior preço_atual [HH:MM]
-    match = re.match(r'(https?://\S+)\s+"([^"]+)"\s+([\w\.,R\$]+)\s+([\w\.,R\$]+)(?:\s+(\d{1,2}:\d{2}))?', texto)
+    # Formato esperado: link "Título" preço [preço_atual] [HH:MM]
+    match = re.match(r'(https?://\S+)\s+"([^"]+)"\s+([\w\.,R\$]+)(?:\s+([\w\.,R\$]+))?(?:\s+(\d{1,2}:\d{2}))?', texto)
     if not match:
-        update.message.reply_text('Formato inválido. Use: link "Título do Produto" preço_anterior preço_atual [HH:MM]')
+        update.message.reply_text('Formato inválido. Use: link "Título" preço_anterior preço_atual [HH:MM] ou link "Título" preço [HH:MM]')
         return
 
     link = match.group(1)
     titulo_manual = match.group(2)
-    preco_anterior = match.group(3)
-    preco_atual = match.group(4)
+    preco1 = match.group(3)
+    preco2 = match.group(4)
     horario = match.group(5)
+
+    precos = [preco1] if not preco2 else [preco1, preco2]
 
     link_encurtado = encurtar_link(link)
     titulo = gerar_titulo_criativo(titulo_manual)
-    anuncio = criar_anuncio(link_encurtado, titulo, preco_anterior, preco_atual)
+    anuncio = criar_anuncio(link_encurtado, titulo, precos)
 
     if horario:
         try:
@@ -136,15 +163,21 @@ def processar_mensagem(update, context):
             twitter_api.update_status(texto_tweet)
         except Exception as e:
             print("Erro ao postar no X:", e)
+
+            url_tweet = "https://twitter.com/intent/tweet?text=" + urllib.parse.quote(texto_tweet)
+            keyboard = [[InlineKeyboardButton("🐦 Compartilhar no X", url=url_tweet)]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
             context.bot.send_message(
                 chat_id=ADMIN_ID,
-                text=f"⚠️ Não consegui postar no X.\nAqui está o texto pronto:\n\n{anuncio}"
+                text=f"⚠️ Não consegui postar no X.\nAqui está o texto pronto:\n\n{anuncio}",
+                reply_markup=reply_markup
             )
 
         update.message.reply_text(f"✅ Link enviado imediatamente com título: {titulo}")
 
 def start(update, context):
-    update.message.reply_text('Envie: link "Título do Produto" preço_anterior preço_atual [HH:MM] no grupo de entrada.')
+    update.message.reply_text('Envie: link "Título do Produto" preço_anterior preço_atual [HH:MM] ou link "Título do Produto" preço [HH:MM] no grupo de entrada.')
 
 def main():
     updater = Updater(TOKEN, use_context=True)
