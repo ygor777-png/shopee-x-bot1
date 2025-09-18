@@ -84,9 +84,9 @@ def mapear_colunas(df):
         return None
 
     return {
-        "link": achar("link", "url", "product_url", "produto_url", "url do produto"),
+        "link": achar("link", "url", "product_link", "produto_url", "url do produto"),
         "titulo": achar("titulo", "title", "name", "produto", "product_name", "nome"),
-        "preco": achar("preco", "price", "valor", "current_price", "preço atual"),
+        "preco": achar("preco", "sale_price", "valor", "current_price", "preço atual"),
         "preco_antigo": achar("preco_antigo", "old_price", "preco_original", "original_price", "preço original")
     }
 
