@@ -24,9 +24,8 @@ ACCESS_TOKEN_SECRET = os.getenv("ACCESS_TOKEN_SECRET")
 auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET_KEY, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
 twitter_api = tweepy.API(auth)
 
-# -------- Links fixos das redes sociais --------
-LINK_TELEGRAM = "https://t.me/+aA2_TSZVh2E2NzRh"
-LINK_X = "https://x.com/ofer_shopee"
+# -------- Link centralizador --------
+LINK_CENTRAL = "https://atom.bio/ofertas_express"
 
 # -------- Funções utilitárias --------
 def encurtar_link(link):
@@ -39,10 +38,29 @@ def encurtar_link(link):
 def gerar_titulo_criativo(titulo_manual):
     prefixos = [
         "🔥 Oferta Imperdível:",
-        "💥 Promoção Relâmpago:",
+        "⚡ Promoção Relâmpago:",
         "✨ Destaque do Dia:",
-        "🎯 Achado Especial:",
-        "🛒 Super Desconto:"
+        "🔍 Achado Especial:",
+        "🛒 Super Desconto:",
+        "🏆 Top Oferta:",
+        "💎 Oferta Premium:",
+        "🎯 Escolha Certa:",
+        "🚀 Oferta Explosiva:",
+        "🎁 Promoção Exclusiva:",
+        "📢 Atenção:",
+        "💥 Desconto Incrível:",
+        "🌟 Super Achado:",
+        "🏷️ Preço Baixou:",
+        "📌 Oferta Limitada:",
+        "⏳ Só Hoje:",
+        "🥇 Campeão de Vendas:",
+        "🔥 Queima de Estoque:",
+        "💡 Oportunidade Única:",
+        "🎉 Oferta Especial:",
+        "📦 Estoque Limitado:",
+        "🕒 Últimas Horas:",
+        "⭐ Oferta 5 Estrelas:",
+        "🎊 Promoção do Momento:"
     ]
     prefixo = random.choice(prefixos)
     return f"{prefixo} {titulo_manual}"
@@ -50,7 +68,22 @@ def gerar_titulo_criativo(titulo_manual):
 def gerar_texto_preco(precos):
     if len(precos) == 1:
         preco = precos[0]
-        return f"💰 Por: {preco}"
+        modelos_unico = [
+            f"💰 Por: {preco}",
+            f"🔥 Apenas {preco}!",
+            f"🎯 Leve já por {preco}!",
+            f"🛒 Disponível por {preco}",
+            f"⚡ Oferta: {preco}",
+            f"🏷️ Preço único: {preco}",
+            f"🎉 Só hoje: {preco}",
+            f"📌 Valor promocional: {preco}",
+            f"✅ Agora por {preco}",
+            f"🥳 Aproveite por {preco}!",
+            f"💎 Exclusivo: {preco}",
+            f"🚀 Pegue já por {preco}",
+            f"🎁 Oferta especial: {preco}"
+        ]
+        return random.choice(modelos_unico)
     else:
         preco_anterior, preco_atual = precos
         modelos = [
@@ -58,16 +91,22 @@ def gerar_texto_preco(precos):
             f"💸 Antes {preco_anterior}, agora só {preco_atual}!",
             f"🔥 De {preco_anterior} caiu para {preco_atual}!",
             f"🎉 De {preco_anterior} por apenas {preco_atual}!",
-            f"⚡ Aproveite: {preco_anterior} ➝ {preco_atual}"
+            f"➡️ Aproveite: {preco_anterior} → {preco_atual}",
+            f"⚡ Desconto relâmpago: {preco_anterior} baixou para {preco_atual}!",
+            f"🏷️ Preço antigo: {preco_anterior}\n👉 Novo preço: {preco_atual}",
+            f"📉 De {preco_anterior} despencou para {preco_atual}!",
+            f"🥳 Promoção: {preco_anterior} virou {preco_atual}!",
+            f"🤑 De {preco_anterior} por só {preco_atual}!",
+            f"💎 De {preco_anterior} agora exclusivo por {preco_atual}!",
+            f"🚀 Oferta turbo: {preco_anterior} → {preco_atual}",
+            f"🎁 Antes {preco_anterior}, hoje {preco_atual}!",
+            f"⭐ De {preco_anterior} baixou para {preco_atual}!"
         ]
         return random.choice(modelos)
 
 def criar_anuncio(link, titulo, precos):
     texto_preco = gerar_texto_preco(precos)
-
-    # Encurta os links fixos
-    link_telegram = encurtar_link(LINK_TELEGRAM)
-    link_x = encurtar_link(LINK_X)
+    link_central_encurtado = encurtar_link(LINK_CENTRAL)
 
     return f"""{titulo}
 
@@ -78,8 +117,7 @@ def criar_anuncio(link, titulo, precos):
 ⚠️ Corre que acaba rapido!
 
 🌐 Siga nossas redes sociais:
-📲 Telegram: {link_telegram}
-🐦 X: {link_x}"""
+{link_central_encurtado}"""
 
 # -------- Função para enviar anúncio --------
 def enviar_anuncio(context):
@@ -143,7 +181,6 @@ def processar_mensagem(update, context):
             hora, minuto = map(int, horario.split(":"))
             agendamento = agora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
 
-            # Correção: se for menor OU igual, agenda para o próximo dia
             if agendamento <= agora:
                 agendamento += timedelta(days=1)
 
@@ -166,32 +203,4 @@ def processar_mensagem(update, context):
                 texto_tweet = texto_tweet[:277] + "..."
             twitter_api.update_status(texto_tweet)
         except Exception as e:
-            print("Erro ao postar no X:", e)
-
-            url_tweet = "https://twitter.com/intent/tweet?text=" + urllib.parse.quote(texto_tweet)
-            keyboard = [[InlineKeyboardButton("🐦 Compartilhar no X", url=url_tweet)]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
-            context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=f"⚠️ Não consegui postar no X.\nAqui está o texto pronto:\n\n{anuncio}",
-                reply_markup=reply_markup
-            )
-
-        update.message.reply_text(f"✅ Link enviado imediatamente com título: {titulo}")
-
-def start(update, context):
-    update.message.reply_text('Envie: link "Título do Produto" preço_anterior preço_atual [HH:MM] ou link "Título do Produto" preço [HH:MM] no grupo de entrada.')
-
-def main():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
-
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, processar_mensagem))
-
-    updater.start_polling()
-    updater.idle()
-
-if __name__ == "__main__":
-    main()
+            print("Erro ao postar
