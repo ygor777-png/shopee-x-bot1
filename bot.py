@@ -1,5 +1,4 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import os, re, random, pytz, pyshorteners, requests, time as time_module
 from datetime import datetime, timedelta, time
 import pandas as pd
@@ -74,11 +73,66 @@ def criar_anuncio(link, titulo, precos):
 🌐 Siga nossas redes sociais:
 {link_central_encurtado}"""
 
-# -------- Envio --------
-def enviar_anuncio(context):
-    job = context.job
-    anuncio = job.context["anuncio"]
-    context.bot.send_message(chat_id=job.context["chat_id"], text=anuncio)
+# -------- Mapeamento automático de colunas --------
+def mapear_colunas(df):
+    colunas = {c.lower(): c for c in df.columns}
+
+    def achar(*possiveis):
+        for p in possiveis:
+            if p in colunas:
+                return colunas[p]
+        return None
+
+    return {
+        "link": achar("link", "url", "product_url", "produto_url"),
+        "titulo": achar("titulo", "title", "name", "produto", "product_name"),
+        "preco": achar("preco", "price", "valor", "current_price"),
+        "preco_antigo": achar("preco_antigo", "old_price", "preco_original", "original_price")
+    }
+
+# -------- Processar CSV --------
+def processar_csv(context):
+    enviados = set()
+    for url_csv in CSV_LINKS:
+        try:
+            resp = requests.get(url_csv)
+            df = pd.read_csv(BytesIO(resp.content))
+
+            mapeamento = mapear_colunas(df)
+            if not mapeamento["link"] or not mapeamento["titulo"] or not mapeamento["preco"]:
+                context.bot.send_message(chat_id=ADMIN_ID, text=f"⚠️ CSV {url_csv} não tem colunas necessárias.")
+                continue
+
+            for _, row in df.iterrows():
+                link_produto = str(row[mapeamento["link"]]).strip()
+                if link_produto in enviados:
+                    continue
+                enviados.add(link_produto)
+
+                titulo_manual = str(row[mapeamento["titulo"]]).strip()
+                preco_atual = str(row[mapeamento["preco"]]).strip()
+                preco_antigo = None
+                if mapeamento["preco_antigo"] and pd.notna(row[mapeamento["preco_antigo"]]):
+                    preco_antigo = str(row[mapeamento["preco_antigo"]]).strip()
+
+                precos = [preco_atual] if not preco_antigo else [preco_antigo, preco_atual]
+                link_encurtado = encurtar_link(link_produto)
+                titulo = gerar_titulo_criativo(titulo_manual)
+                anuncio = criar_anuncio(link_encurtado, titulo, precos)
+
+                context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
+                time_module.sleep(5)  # intervalo entre envios
+        except Exception as e:
+            context.bot.send_message(chat_id=ADMIN_ID, text=f"⚠️ Erro ao processar CSV {url_csv}: {e}")
+
+# -------- Comando manual para rodar CSV --------
+def comando_csv(update, context):
+    if update.message.chat_id != ADMIN_ID:
+        update.message.reply_text("❌ Você não tem permissão para usar este comando.")
+        return
+    update.message.reply_text("📦 Iniciando envio manual do CSV...")
+    processar_csv(context)
+    update.message.reply_text("✅ Envio manual do CSV concluído!")
 
 # -------- Mensagens manuais --------
 def processar_mensagem(update, context):
@@ -113,9 +167,8 @@ def processar_mensagem(update, context):
                 agendamento += timedelta(days=1)
             delay = (agendamento - agora).total_seconds()
             context.job_queue.run_once(
-                enviar_anuncio,
-                delay,
-                context={"chat_id": GRUPO_SAIDA_ID, "anuncio": anuncio}
+                lambda ctx: ctx.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio),
+                delay
             )
             update.message.reply_text(f"✅ Link agendado para {agendamento.strftime('%H:%M')} com título: {titulo}")
         except Exception as e:
@@ -124,45 +177,11 @@ def processar_mensagem(update, context):
         context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
         update.message.reply_text(f"✅ Link enviado imediatamente com título: {titulo}")
 
-# -------- CSV automático --------
-def processar_csv(context):
-    enviados = set()
-    for url_csv in CSV_LINKS:
-        try:
-            resp = requests.get(url_csv)
-            df = pd.read_csv(BytesIO(resp.content))
-
-            for _, row in df.iterrows():
-                link_produto = str(row["link"]).strip()
-                if link_produto in enviados:
-                    continue
-                enviados.add(link_produto)
-
-                titulo_manual = str(row["titulo"]).strip()
-                preco_atual = str(row["preco"]).strip()
-                preco_antigo = str(row["preco_antigo"]).strip() if "preco_antigo" in row and pd.notna(row["preco_antigo"]) else None
-
-                precos = [preco_atual] if not preco_antigo else [preco_antigo, preco_atual]
-                link_encurtado = encurtar_link(link_produto)
-                titulo = gerar_titulo_criativo(titulo_manual)
-                anuncio = criar_anuncio(link_encurtado, titulo, precos)
-
-                context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
-                time_module.sleep(5)  # intervalo entre envios
-        except Exception as e:
-            context.bot.send_message(chat_id=ADMIN_ID, text=f"⚠️ Erro ao processar CSV {url_csv}: {e}")
-
-# -------- Comando manual para rodar CSV --------
-def comando_csv(update, context):
-    update.message.reply_text("📦 Iniciando envio manual do CSV...")
-    processar_csv(context)
-    update.message.reply_text("✅ Envio manual do CSV concluído!")
-
 # -------- Inicialização --------
 def start(update, context):
     update.message.reply_text(
         'Envie: link "Título" preço_anterior preço_atual [HH:MM] ou link "Título" preço [HH:MM]\n'
-        'Use /csv para enviar manualmente as ofertas do CSV agora.'
+        'Use /csv para enviar manualmente as ofertas do CSV agora (somente admin).'
     )
 
 def main():
