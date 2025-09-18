@@ -1,6 +1,6 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import os, re, random, pytz, pyshorteners, requests, time as time_module
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time as dtime
 import pandas as pd
 from io import BytesIO
 
@@ -18,7 +18,6 @@ LINK_CENTRAL = "https://atom.bio/ofertas_express"
 # Lista de links CSV (separe por vírgula no .env)
 CSV_LINKS = [link.strip() for link in os.getenv("CSV_URLS", "").split(",") if link.strip()]
 
-# -------- Funções utilitárias --------
 def encurtar_link(link):
     try:
         s = pyshorteners.Shortener()
@@ -36,6 +35,14 @@ def gerar_titulo_criativo(titulo_manual):
         "🎉 Oferta Especial:"
     ]
     return f"{random.choice(prefixos)} {titulo_manual}"
+
+def formatar_preco(valor):
+    try:
+        valor = re.sub(r'[^\d,\.]', '', str(valor))
+        valor_float = float(valor.replace(',', '.'))
+        return f"R$ {valor_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return str(valor)
 
 def gerar_texto_preco(precos):
     if len(precos) == 1:
@@ -84,10 +91,10 @@ def mapear_colunas(df):
         return None
 
     return {
-        "link": achar("link", "url", "product_link", "produto_url", "url do produto"),
+        "link": achar("link", "product_link", "produto_url", "url do produto"),
         "titulo": achar("titulo", "title", "name", "produto", "product_name", "nome"),
-        "preco": achar("preco", "sale_price", "valor", "current_price", "preço atual"),
-        "preco_antigo": achar("preco_antigo", "old_price", "preco_original", "original_price", "preço original")
+        "preco": achar("sale_price", "price", "valor", "current_price", "preço atual"),
+        "preco_antigo": achar("price", "old_price", "preco_original", "original_price", "preço original")
     }
 
 # -------- Processar CSV --------
@@ -117,10 +124,10 @@ async def processar_csv(context: ContextTypes.DEFAULT_TYPE):
                 enviados.add(link_produto)
 
                 titulo_manual = str(row[mapeamento["titulo"]]).strip()
-                preco_atual = str(row[mapeamento["preco"]]).strip()
+                preco_atual = formatar_preco(row[mapeamento["preco"]])
                 preco_antigo = None
                 if mapeamento["preco_antigo"] and pd.notna(row[mapeamento["preco_antigo"]]):
-                    preco_antigo = str(row[mapeamento["preco_antigo"]]).strip()
+                    preco_antigo = formatar_preco(row[mapeamento["preco_antigo"]])
 
                 precos = [preco_atual] if not preco_antigo else [preco_antigo, preco_atual]
                 link_encurtado = encurtar_link(link_produto)
@@ -141,6 +148,25 @@ async def comando_csv(update, context: ContextTypes.DEFAULT_TYPE):
     await processar_csv(context)
     await update.message.reply_text("✅ Envio manual do CSV concluído!")
 
+# -------- Parar agendamento --------
+async def stopcsv(update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_ID:
+        await update.message.reply_text("❌ Você não tem permissão para usar este comando.")
+        return
+    jobs = context.job_queue.get_jobs_by_name("csv_intervalo")
+    if not jobs:
+        await update.message.reply_text("⚠️ Nenhum agendamento ativo encontrado.")
+        return
+    for job in jobs:
+        job.schedule_removal()
+    await update.message.reply_text("🛑 Agendamento de envio automático cancelado.")
+
+# -------- Envio automático a cada 10 minutos --------
+async def enviar_csv_intervalo(context: ContextTypes.DEFAULT_TYPE):
+    agora = datetime.now(TZ).time()
+    if dtime(8, 0) <= agora <= dtime(23, 0):
+        await processar_csv(context)
+
 # -------- Mensagens manuais --------
 async def processar_mensagem(update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -151,13 +177,15 @@ async def processar_mensagem(update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text.strip()
     match = re.match(r'(https?://\S+)\s+"([^"]+)"\s+([\w\.,R\$]+)(?:\s+([\w\.,R\$]+))?(?:\s+(\d{1,2}:\d{2}))?', texto)
     if not match:
-        await update.message.reply_text('Formato inválido. Use: link "Título" preço_anterior preço_atual [HH:MM] ou link "Título" preço [HH:MM]')
+        await update.message.reply_text(
+            'Formato inválido. Use: link "Título" preço_anterior preço_atual [HH:MM] ou link "Título" preço [HH:MM]'
+        )
         return
 
     link = match.group(1)
     titulo_manual = match.group(2)
-    preco1 = match.group(3)
-    preco2 = match.group(4)
+    preco1 = formatar_preco(match.group(3))
+    preco2 = formatar_preco(match.group(4)) if match.group(4) else None
     horario = match.group(5)
 
     precos = [preco1] if not preco2 else [preco1, preco2]
@@ -177,37 +205,44 @@ async def processar_mensagem(update, context: ContextTypes.DEFAULT_TYPE):
                 lambda ctx: ctx.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio),
                 delay
             )
-            await update.message.reply_text(f"✅ Link agendado para {agendamento.strftime('%H:%M')} com título: {titulo}")
+            await update.message.reply_text(
+                f"✅ Link agendado para {agendamento.strftime('%H:%M')} com título: {titulo}"
+            )
         except Exception as e:
             await update.message.reply_text(f"⚠️ Horário inválido. Erro: {e}")
     else:
         await context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
         await update.message.reply_text(f"✅ Link enviado imediatamente com título: {titulo}")
 
-# -------- Inicialização --------
+# -------- Comando /start --------
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         'Envie: link "Título" preço_anterior preço_atual [HH:MM] ou link "Título" preço [HH:MM]\n'
-        'Use /csv para enviar manualmente as ofertas do CSV agora (somente admin).'
+        'Use /csv para enviar manualmente as ofertas do CSV agora (somente admin).\n'
+        'Use /stopcsv para parar o envio automático.'
     )
 
+# -------- Função principal --------
 def main():
-    # Cria a aplicação do bot
     application = Application.builder().token(TOKEN).build()
 
-    # Adiciona os comandos
+    # Handlers de comando
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("csv", comando_csv))
+    application.add_handler(CommandHandler("stopcsv", stopcsv))
+
+    # Handler de mensagens manuais
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_mensagem))
 
-    # Agenda a execução diária do CSV às 9h
-    application.job_queue.run_daily(
-        processar_csv,
-        time=time(hour=9, minute=0, tzinfo=TZ)
+    # Agendamento de envio a cada 10 minutos entre 8h e 23h
+    application.job_queue.run_repeating(
+        enviar_csv_intervalo,
+        interval=600,  # 10 minutos
+        first=dtime(hour=8, minute=0, tzinfo=TZ),
+        name="csv_intervalo"
     )
 
-    # Inicia o bot
     application.run_polling()
 
 if __name__ == "__main__":
-    main(
+    main()
