@@ -1,6 +1,6 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-import os, re, random, requests, pytz, tweepy, pyshorteners, urllib.parse
+import os, re, random, pytz, tweepy, pyshorteners, urllib.parse
 from datetime import datetime, timedelta
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -112,9 +112,7 @@ def criar_anuncio(link, titulo, precos):
 
 {texto_preco}
 
-👉 Compre por aqui: {link}
-
-⚠️ Corre que acaba rapido!
+👉 Garanta aqui: {link}
 
 🌐 Siga nossas redes sociais:
 {link_central_encurtado}"""
@@ -198,9 +196,4 @@ def processar_mensagem(update, context):
     else:
         context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
         try:
-            texto_tweet = anuncio.replace("\n", " ")
-            if len(texto_tweet) > 280:
-                texto_tweet = texto_tweet[:277] + "..."
-            twitter_api.update_status(texto_tweet)
-        except Exception as e:
-            print("Erro ao postar
+            texto_t
