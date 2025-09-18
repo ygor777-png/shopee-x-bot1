@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 TOKEN = os.getenv("BOT_TOKEN")
 
 # IDs dos grupos
-GRUPO_ENTRADA_ID = -1001234567890
-GRUPO_SAIDA_ID = -1009876543210
+GRUPO_ENTRADA_ID = -4653176769
+GRUPO_SAIDA_ID = -1001592474533
 
 # Seu user_id do Telegram (descubra com @userinfobot e coloque aqui)
 ADMIN_ID = 1420827874  # <<< SUBSTITUA PELO SEU ID REAL
