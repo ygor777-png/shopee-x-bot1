@@ -1,4 +1,4 @@
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import os, re, random, pytz, pyshorteners, requests, time as time_module
 from datetime import datetime, timedelta, time
 import pandas as pd
@@ -91,7 +91,7 @@ def mapear_colunas(df):
     }
 
 # -------- Processar CSV --------
-def processar_csv(context):
+async def processar_csv(context: ContextTypes.DEFAULT_TYPE):
     enviados = set()
     for url_csv in CSV_LINKS:
         try:
@@ -100,7 +100,7 @@ def processar_csv(context):
 
             mapeamento = mapear_colunas(df)
             if not mapeamento["link"] or not mapeamento["titulo"] or not mapeamento["preco"]:
-                context.bot.send_message(chat_id=ADMIN_ID, text=f"⚠️ CSV {url_csv} não tem colunas necessárias.")
+                await context.bot.send_message(chat_id=ADMIN_ID, text=f"⚠️ CSV {url_csv} não tem colunas necessárias.")
                 continue
 
             for _, row in df.iterrows():
@@ -120,31 +120,31 @@ def processar_csv(context):
                 titulo = gerar_titulo_criativo(titulo_manual)
                 anuncio = criar_anuncio(link_encurtado, titulo, precos)
 
-                context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
+                await context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
                 time_module.sleep(5)  # intervalo entre envios
         except Exception as e:
-            context.bot.send_message(chat_id=ADMIN_ID, text=f"⚠️ Erro ao processar CSV {url_csv}: {e}")
+            await context.bot.send_message(chat_id=ADMIN_ID, text=f"⚠️ Erro ao processar CSV {url_csv}: {e}")
 
 # -------- Comando manual para rodar CSV --------
-def comando_csv(update, context):
-    if update.message.chat_id != ADMIN_ID:
-        update.message.reply_text("❌ Você não tem permissão para usar este comando.")
+async def comando_csv(update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_ID:
+        await update.message.reply_text("❌ Você não tem permissão para usar este comando.")
         return
-    update.message.reply_text("📦 Iniciando envio manual do CSV...")
-    processar_csv(context)
-    update.message.reply_text("✅ Envio manual do CSV concluído!")
+    await update.message.reply_text("📦 Iniciando envio manual do CSV...")
+    await processar_csv(context)
+    await update.message.reply_text("✅ Envio manual do CSV concluído!")
 
 # -------- Mensagens manuais --------
-def processar_mensagem(update, context):
+async def processar_mensagem(update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
-    if update.message.chat_id != GRUPO_ENTRADA_ID:
+    if update.effective_chat.id != GRUPO_ENTRADA_ID:
         return
 
     texto = update.message.text.strip()
     match = re.match(r'(https?://\S+)\s+"([^"]+)"\s+([\w\.,R\$]+)(?:\s+([\w\.,R\$]+))?(?:\s+(\d{1,2}:\d{2}))?', texto)
     if not match:
-        update.message.reply_text('Formato inválido. Use: link "Título" preço_anterior preço_atual [HH:MM] ou link "Título" preço [HH:MM]')
+        await update.message.reply_text('Formato inválido. Use: link "Título" preço_anterior preço_atual [HH:MM] ou link "Título" preço [HH:MM]')
         return
 
     link = match.group(1)
@@ -170,33 +170,18 @@ def processar_mensagem(update, context):
                 lambda ctx: ctx.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio),
                 delay
             )
-            update.message.reply_text(f"✅ Link agendado para {agendamento.strftime('%H:%M')} com título: {titulo}")
+            await update.message.reply_text(f"✅ Link agendado para {agendamento.strftime('%H:%M')} com título: {titulo}")
         except Exception as e:
-            update.message.reply_text(f"⚠️ Horário inválido. Erro: {e}")
+            await update.message.reply_text(f"⚠️ Horário inválido. Erro: {e}")
     else:
-        context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
-        update.message.reply_text(f"✅ Link enviado imediatamente com título: {titulo}")
+        await context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
+        await update.message.reply_text(f"✅ Link enviado imediatamente com título: {titulo}")
 
 # -------- Inicialização --------
-def start(update, context):
-    update.message.reply_text(
+async def start(update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
         'Envie: link "Título" preço_anterior preço_atual [HH:MM] ou link "Título" preço [HH:MM]\n'
         'Use /csv para enviar manualmente as ofertas do CSV agora (somente admin).'
     )
 
 def main():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
-
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("csv", comando_csv))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, processar_mensagem))
-
-    # Agendar CSV diário às 9h
-    updater.job_queue.run_daily(processar_csv, time=time(hour=9, minute=0, tzinfo=TZ))
-
-    updater.start_polling()
-    updater.idle()
-
-if __name__ == "__main__":
-    main()
