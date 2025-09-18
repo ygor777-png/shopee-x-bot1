@@ -75,6 +75,8 @@ def criar_anuncio(link, titulo, precos):
 
 👉 Garanta aqui: {link}
 
+⚠️ Essa promo pode acabar a qualquer momento
+
 🌐 Siga nossas redes sociais:
 📲 Telegram: {link_telegram}
 🐦 X: {link_x}"""
