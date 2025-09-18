@@ -34,6 +34,7 @@ def encurtar_link(link):
         return s.tinyurl.short(link)
     except:
         return link
+
 def gerar_titulo_criativo(titulo_manual):
     prefixos = [
         "🔥 Oferta Imperdível:",
@@ -41,25 +42,7 @@ def gerar_titulo_criativo(titulo_manual):
         "✨ Destaque do Dia:",
         "🔍 Achado Especial:",
         "🛒 Super Desconto:",
-        "🏆 Top Oferta:",
-        "💎 Oferta Premium:",
-        "🎯 Escolha Certa:",
-        "🚀 Oferta Explosiva:",
-        "🎁 Promoção Exclusiva:",
-        "📢 Atenção:",
-        "💥 Desconto Incrível:",
-        "🌟 Super Achado:",
-        "🏷️ Preço Baixou:",
-        "📌 Oferta Limitada:",
-        "⏳ Só Hoje:",
-        "🥇 Campeão de Vendas:",
-        "🔥 Queima de Estoque:",
-        "💡 Oportunidade Única:",
-        "🎉 Oferta Especial:",
-        "📦 Estoque Limitado:",
-        "🕒 Últimas Horas:",
-        "⭐ Oferta 5 Estrelas:",
-        "🎊 Promoção do Momento:"
+        "🎉 Oferta Especial:"
     ]
     prefixo = random.choice(prefixos)
     return f"{prefixo} {titulo_manual}"
@@ -71,16 +54,8 @@ def gerar_texto_preco(precos):
             f"💰 Por: {preco}",
             f"🔥 Apenas {preco}!",
             f"🎯 Leve já por {preco}!",
-            f"🛒 Disponível por {preco}",
             f"⚡ Oferta: {preco}",
-            f"🏷️ Preço único: {preco}",
-            f"🎉 Só hoje: {preco}",
-            f"📌 Valor promocional: {preco}",
-            f"✅ Agora por {preco}",
-            f"🥳 Aproveite por {preco}!",
-            f"💎 Exclusivo: {preco}",
-            f"🚀 Pegue já por {preco}",
-            f"🎁 Oferta especial: {preco}"
+            f"✅ Agora por {preco}"
         ]
         return random.choice(modelos_unico)
     else:
@@ -90,16 +65,7 @@ def gerar_texto_preco(precos):
             f"💸 Antes {preco_anterior}, agora só {preco_atual}!",
             f"🔥 De {preco_anterior} caiu para {preco_atual}!",
             f"🎉 De {preco_anterior} por apenas {preco_atual}!",
-            f"➡️ Aproveite: {preco_anterior} → {preco_atual}",
-            f"⚡ Desconto relâmpago: {preco_anterior} baixou para {preco_atual}!",
-            f"🏷️ Preço antigo: {preco_anterior}\n👉 Novo preço: {preco_atual}",
-            f"📉 De {preco_anterior} despencou para {preco_atual}!",
-            f"🥳 Promoção: {preco_anterior} virou {preco_atual}!",
-            f"🤑 De {preco_anterior} por só {preco_atual}!",
-            f"💎 De {preco_anterior} agora exclusivo por {preco_atual}!",
-            f"🚀 Oferta turbo: {preco_anterior} → {preco_atual}",
-            f"🎁 Antes {preco_anterior}, hoje {preco_atual}!",
-            f"⭐ De {preco_anterior} baixou para {preco_atual}!"
+            f"➡️ Aproveite: {preco_anterior} → {preco_atual}"
         ]
         return random.choice(modelos)
 
@@ -118,6 +84,7 @@ def criar_anuncio(link, titulo, precos):
 🌐 Siga nossas redes sociais:
 {link_central_encurtado}"""
 
+# -------- Função para enviar anúncio --------
 def enviar_anuncio(context):
     job = context.job
     anuncio = job.context["anuncio"]
@@ -145,6 +112,7 @@ def enviar_anuncio(context):
             reply_markup=reply_markup
         )
 
+# -------- Processamento da mensagem --------
 def processar_mensagem(update, context):
     if not update.message or not update.message.text:
         return  
@@ -198,7 +166,23 @@ def processar_mensagem(update, context):
             texto_tweet = anuncio.replace("\n", " ")
             if len(texto_tweet) > 280:
                 texto_tweet = texto_tweet[:277] + "..."
+            twitter_api.update_status(texto_tweet)
+        except Exception as e:
+            print("Erro ao postar no X:", e)
 
+            url_tweet = "https://twitter.com/intent/tweet?text=" + urllib.parse.quote(texto_tweet)
+            keyboard = [[InlineKeyboardButton("🐦 Compartilhar no X", url=url_tweet)]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=f"⚠️ Não consegui postar no X.\nAqui está o texto pronto:\n\n{anuncio}",
+                reply_markup=reply_markup
+            )
+
+        update.message.reply_text(f"✅ Link enviado imediatamente com título: {titulo}")
+
+# -------- Inicialização --------
 def start(update, context):
     update.message.reply_text(
         'Envie: link "Título do Produto" preço_anterior preço_atual [HH:MM] '
