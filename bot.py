@@ -185,3 +185,22 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 def main():
+    # Cria a aplicação do bot
+    application = Application.builder().token(TOKEN).build()
+
+    # Adiciona os comandos
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("csv", comando_csv))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_mensagem))
+
+    # Agenda a execução diária do CSV às 9h
+    application.job_queue.run_daily(
+        processar_csv,
+        time=time(hour=9, minute=0, tzinfo=TZ)
+    )
+
+    # Inicia o bot
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()
