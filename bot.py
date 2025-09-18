@@ -84,10 +84,10 @@ def mapear_colunas(df):
         return None
 
     return {
-        "link": achar("link", "url", "product_url", "produto_url"),
-        "titulo": achar("titulo", "title", "name", "produto", "product_name"),
-        "preco": achar("preco", "price", "valor", "current_price"),
-        "preco_antigo": achar("preco_antigo", "old_price", "preco_original", "original_price")
+        "link": achar("link", "url", "product_url", "produto_url", "url do produto"),
+        "titulo": achar("titulo", "title", "name", "produto", "product_name", "nome"),
+        "preco": achar("preco", "price", "valor", "current_price", "preço atual"),
+        "preco_antigo": achar("preco_antigo", "old_price", "preco_original", "original_price", "preço original")
     }
 
 # -------- Processar CSV --------
@@ -100,7 +100,14 @@ async def processar_csv(context: ContextTypes.DEFAULT_TYPE):
 
             mapeamento = mapear_colunas(df)
             if not mapeamento["link"] or not mapeamento["titulo"] or not mapeamento["preco"]:
-                await context.bot.send_message(chat_id=ADMIN_ID, text=f"⚠️ CSV {url_csv} não tem colunas necessárias.")
+                colunas_encontradas = ", ".join(df.columns)
+                await context.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=(
+                        f"⚠️ CSV {url_csv} não tem colunas necessárias.\n"
+                        f"Colunas encontradas: {colunas_encontradas}"
+                    )
+                )
                 continue
 
             for _, row in df.iterrows():
