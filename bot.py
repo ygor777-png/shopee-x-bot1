@@ -142,7 +142,9 @@ def processar_mensagem(update, context):
             agora = datetime.now(TZ)
             hora, minuto = map(int, horario.split(":"))
             agendamento = agora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
-            if agendamento < agora:
+
+            # Correção: se for menor OU igual, agenda para o próximo dia
+            if agendamento <= agora:
                 agendamento += timedelta(days=1)
 
             delay = (agendamento - agora).total_seconds()
