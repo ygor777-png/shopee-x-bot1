@@ -1,31 +1,23 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-import os, re, random, pytz, tweepy, pyshorteners, urllib.parse
-from datetime import datetime, timedelta
+import os, re, random, pytz, pyshorteners, requests, time as time_module
+from datetime import datetime, timedelta, time
+import pandas as pd
+from io import BytesIO
 
+# -------- Configurações --------
 TOKEN = os.getenv("BOT_TOKEN")
 
-# IDs dos grupos
-GRUPO_ENTRADA_ID = -4653176769
-GRUPO_SAIDA_ID = -1001592474533
+GRUPO_ENTRADA_ID = int(os.getenv("GRUPO_ENTRADA_ID", "-4653176769"))
+GRUPO_SAIDA_ID = int(os.getenv("GRUPO_SAIDA_ID", "-1001592474533"))
+ADMIN_ID = int(os.getenv("ADMIN_ID", "1420827874"))
 
-# Seu user_id do Telegram (descubra com @userinfobot e coloque aqui)
-ADMIN_ID = 1420827874  # <<< SUBSTITUA PELO SEU ID REAL
-
-# Timezone Brasil
 TZ = pytz.timezone("America/Sao_Paulo")
 
-# -------- Configuração do X (Twitter) --------
-API_KEY = os.getenv("API_KEY")
-API_SECRET_KEY = os.getenv("API_SECRET_KEY")
-ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
-ACCESS_TOKEN_SECRET = os.getenv("ACCESS_TOKEN_SECRET")
-
-auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET_KEY, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
-twitter_api = tweepy.API(auth)
-
-# -------- Link centralizador --------
 LINK_CENTRAL = "https://atom.bio/ofertas_express"
+
+# Lista de links CSV (separe por vírgula no .env)
+CSV_LINKS = [link.strip() for link in os.getenv("CSV_URLS", "").split(",") if link.strip()]
 
 # -------- Funções utilitárias --------
 def encurtar_link(link):
@@ -44,8 +36,7 @@ def gerar_titulo_criativo(titulo_manual):
         "🛒 Super Desconto:",
         "🎉 Oferta Especial:"
     ]
-    prefixo = random.choice(prefixos)
-    return f"{prefixo} {titulo_manual}"
+    return f"{random.choice(prefixos)} {titulo_manual}"
 
 def gerar_texto_preco(precos):
     if len(precos) == 1:
@@ -72,7 +63,6 @@ def gerar_texto_preco(precos):
 def criar_anuncio(link, titulo, precos):
     texto_preco = gerar_texto_preco(precos)
     link_central_encurtado = encurtar_link(LINK_CENTRAL)
-
     return f"""{titulo}
 
 {texto_preco}
@@ -84,45 +74,20 @@ def criar_anuncio(link, titulo, precos):
 🌐 Siga nossas redes sociais:
 {link_central_encurtado}"""
 
-# -------- Função para enviar anúncio --------
+# -------- Envio --------
 def enviar_anuncio(context):
     job = context.job
     anuncio = job.context["anuncio"]
-
-    # Envia no grupo do Telegram
     context.bot.send_message(chat_id=job.context["chat_id"], text=anuncio)
 
-    # Posta também no X
-    try:
-        texto_tweet = anuncio.replace("\n", " ")
-        if len(texto_tweet) > 280:
-            texto_tweet = texto_tweet[:277] + "..."
-        twitter_api.update_status(texto_tweet)
-    except Exception as e:
-        print("Erro ao postar no X:", e)
-
-        # Monta botão de compartilhamento
-        url_tweet = "https://twitter.com/intent/tweet?text=" + urllib.parse.quote(texto_tweet)
-        keyboard = [[InlineKeyboardButton("🐦 Compartilhar no X", url=url_tweet)]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        context.bot.send_message(
-            chat_id=ADMIN_ID,
-            text=f"⚠️ Não consegui postar no X.\nAqui está o texto pronto:\n\n{anuncio}",
-            reply_markup=reply_markup
-        )
-
-# -------- Processamento da mensagem --------
+# -------- Mensagens manuais --------
 def processar_mensagem(update, context):
     if not update.message or not update.message.text:
-        return  
-
+        return
     if update.message.chat_id != GRUPO_ENTRADA_ID:
         return
 
     texto = update.message.text.strip()
-
-    # Formato esperado: link "Título" preço [preço_atual] [HH:MM]
     match = re.match(r'(https?://\S+)\s+"([^"]+)"\s+([\w\.,R\$]+)(?:\s+([\w\.,R\$]+))?(?:\s+(\d{1,2}:\d{2}))?', texto)
     if not match:
         update.message.reply_text('Formato inválido. Use: link "Título" preço_anterior preço_atual [HH:MM] ou link "Título" preço [HH:MM]')
@@ -135,7 +100,6 @@ def processar_mensagem(update, context):
     horario = match.group(5)
 
     precos = [preco1] if not preco2 else [preco1, preco2]
-
     link_encurtado = encurtar_link(link)
     titulo = gerar_titulo_criativo(titulo_manual)
     anuncio = criar_anuncio(link_encurtado, titulo, precos)
@@ -145,48 +109,60 @@ def processar_mensagem(update, context):
             agora = datetime.now(TZ)
             hora, minuto = map(int, horario.split(":"))
             agendamento = agora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
-
             if agendamento <= agora:
                 agendamento += timedelta(days=1)
-
             delay = (agendamento - agora).total_seconds()
-
             context.job_queue.run_once(
                 enviar_anuncio,
                 delay,
                 context={"chat_id": GRUPO_SAIDA_ID, "anuncio": anuncio}
             )
-
             update.message.reply_text(f"✅ Link agendado para {agendamento.strftime('%H:%M')} com título: {titulo}")
         except Exception as e:
-            update.message.reply_text(f"⚠️ Horário inválido. Use formato HH:MM. Erro: {e}")
+            update.message.reply_text(f"⚠️ Horário inválido. Erro: {e}")
     else:
         context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
-        try:
-            texto_tweet = anuncio.replace("\n", " ")
-            if len(texto_tweet) > 280:
-                texto_tweet = texto_tweet[:277] + "..."
-            twitter_api.update_status(texto_tweet)
-        except Exception as e:
-            print("Erro ao postar no X:", e)
-
-            url_tweet = "https://twitter.com/intent/tweet?text=" + urllib.parse.quote(texto_tweet)
-            keyboard = [[InlineKeyboardButton("🐦 Compartilhar no X", url=url_tweet)]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
-            context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=f"⚠️ Não consegui postar no X.\nAqui está o texto pronto:\n\n{anuncio}",
-                reply_markup=reply_markup
-            )
-
         update.message.reply_text(f"✅ Link enviado imediatamente com título: {titulo}")
+
+# -------- CSV automático --------
+def processar_csv(context):
+    enviados = set()
+    for url_csv in CSV_LINKS:
+        try:
+            resp = requests.get(url_csv)
+            df = pd.read_csv(BytesIO(resp.content))
+
+            for _, row in df.iterrows():
+                link_produto = str(row["link"]).strip()
+                if link_produto in enviados:
+                    continue
+                enviados.add(link_produto)
+
+                titulo_manual = str(row["titulo"]).strip()
+                preco_atual = str(row["preco"]).strip()
+                preco_antigo = str(row["preco_antigo"]).strip() if "preco_antigo" in row and pd.notna(row["preco_antigo"]) else None
+
+                precos = [preco_atual] if not preco_antigo else [preco_antigo, preco_atual]
+                link_encurtado = encurtar_link(link_produto)
+                titulo = gerar_titulo_criativo(titulo_manual)
+                anuncio = criar_anuncio(link_encurtado, titulo, precos)
+
+                context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
+                time_module.sleep(5)  # intervalo entre envios
+        except Exception as e:
+            context.bot.send_message(chat_id=ADMIN_ID, text=f"⚠️ Erro ao processar CSV {url_csv}: {e}")
+
+# -------- Comando manual para rodar CSV --------
+def comando_csv(update, context):
+    update.message.reply_text("📦 Iniciando envio manual do CSV...")
+    processar_csv(context)
+    update.message.reply_text("✅ Envio manual do CSV concluído!")
 
 # -------- Inicialização --------
 def start(update, context):
     update.message.reply_text(
-        'Envie: link "Título do Produto" preço_anterior preço_atual [HH:MM] '
-        'ou link "Título do Produto" preço [HH:MM] no grupo de entrada.'
+        'Envie: link "Título" preço_anterior preço_atual [HH:MM] ou link "Título" preço [HH:MM]\n'
+        'Use /csv para enviar manualmente as ofertas do CSV agora.'
     )
 
 def main():
@@ -194,7 +170,11 @@ def main():
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("csv", comando_csv))
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, processar_mensagem))
+
+    # Agendar CSV diário às 9h
+    updater.job_queue.run_daily(processar_csv, time=time(hour=9, minute=0, tzinfo=TZ))
 
     updater.start_polling()
     updater.idle()
