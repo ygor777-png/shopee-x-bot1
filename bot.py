@@ -280,11 +280,11 @@ def main():
     # Handler de mensagens manuais
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_mensagem))
 
-    # Agendamento de envio a cada 10 minutos entre 8h e 23h
+    # Agendamento de envio a cada 10 minutos (começa imediatamente)
     application.job_queue.run_repeating(
         enviar_csv_intervalo,
         interval=600,  # 10 minutos
-        first=dtime(hour=8, minute=0, tzinfo=TZ),
+        first=0,       # começa já na inicialização
         name="csv_intervalo"
     )
 
