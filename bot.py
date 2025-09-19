@@ -8,7 +8,7 @@ from huggingface_hub import InferenceClient  # IA gratuita
 # -------- Configurações --------
 TOKEN = os.getenv("BOT_TOKEN")
 HF_TOKEN = os.getenv("HF_TOKEN")  # token do Hugging Face
-HF_MODEL = "tiiuae/falcon-7b-instruct"  # modelo gratuito
+HF_MODEL = "google/flan-t5-large"  # modelo gratuito
 
 GRUPO_ENTRADA_ID = int(os.getenv("GRUPO_ENTRADA_ID", "-4653176769"))
 GRUPO_SAIDA_ID = int(os.getenv("GRUPO_SAIDA_ID", "-1001592474533"))
