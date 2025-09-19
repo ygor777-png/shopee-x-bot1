@@ -8,7 +8,7 @@ from huggingface_hub import InferenceClient  # IA gratuita
 # -------- Configurações --------
 TOKEN = os.getenv("BOT_TOKEN")
 HF_TOKEN = os.getenv("HF_TOKEN")  # token do Hugging Face
-HF_MODEL = "google/flan-t5-large"  # modelo gratuito
+HF_MODEL = "tiiuae/falcon-7b-instruct"  # modelo compatível com text-generation
 
 GRUPO_ENTRADA_ID = int(os.getenv("GRUPO_ENTRADA_ID", "-4653176769"))
 GRUPO_SAIDA_ID = int(os.getenv("GRUPO_SAIDA_ID", "-1001592474533"))
@@ -27,7 +27,8 @@ def encurtar_link(link):
     try:
         s = pyshorteners.Shortener()
         return s.tinyurl.short(link)
-    except:
+    except Exception as e:
+        print(f"Erro ao encurtar link: {e}")
         return link
 
 def _sanitizar_linha(texto: str) -> str:
@@ -44,6 +45,10 @@ def _sanitizar_linha(texto: str) -> str:
 
 def gerar_titulo_descontraido_ia(titulo_original):
     try:
+        if not HF_TOKEN:
+            print("Erro Hugging Face: HF_TOKEN não configurado.")
+            return "Oferta especial pra você"
+
         client = InferenceClient(model=HF_MODEL, token=HF_TOKEN)
         prompt = (
             "Escreva apenas uma frase curta (máx. 10 palavras), descontraída e chamativa, "
