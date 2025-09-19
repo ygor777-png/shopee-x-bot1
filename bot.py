@@ -337,7 +337,7 @@ def main():
 
     application.job_queue.run_repeating(
         enviar_csv_intervalo,
-        interval=600,
+        interval=60,
         first=0,
         name="csv_intervalo"
     )
