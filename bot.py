@@ -3,12 +3,12 @@ import os, re, random, pytz, pyshorteners, requests
 from datetime import datetime, timedelta, time as dtime
 import pandas as pd
 from io import BytesIO
-import openai  # para gerar título com IA
+from huggingface_hub import InferenceClient  # para gerar título com IA gratuita
 
 # -------- Configurações --------
 TOKEN = os.getenv("BOT_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai.api_key = OPENAI_API_KEY
+HF_TOKEN = os.getenv("HF_TOKEN")  # token do Hugging Face
+HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"  # modelo gratuito
 
 GRUPO_ENTRADA_ID = int(os.getenv("GRUPO_ENTRADA_ID", "-4653176769"))
 GRUPO_SAIDA_ID = int(os.getenv("GRUPO_SAIDA_ID", "-1001592474533"))
@@ -33,21 +33,22 @@ def encurtar_link(link):
         return link
 
 def gerar_titulo_descontraido_ia(titulo_original):
-    prompt = (
-        f"Crie um título curto, descontraído e chamativo para este produto, "
-        f"mantendo o sentido e sem inventar informações. Depois, pule uma linha "
-        f"e coloque o título original completo.\n\nTítulo: {titulo_original}"
-    )
     try:
-        resposta = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=60,
-            temperature=0.8
+        client = InferenceClient(model=HF_MODEL, token=HF_TOKEN)
+        prompt = (
+            f"Crie um título curto, descontraído e chamativo para este produto, "
+            f"mantendo o sentido e sem inventar informações. Depois, pule uma linha "
+            f"e coloque o título original completo.\n\nTítulo: {titulo_original}"
         )
-        return resposta.choices[0].message["content"].strip()
+        resposta = client.text_generation(
+            prompt,
+            max_new_tokens=50,
+            temperature=0.8,
+            do_sample=True
+        )
+        return resposta.strip()
     except Exception as e:
-        print(f"Erro IA: {e}")
+        print(f"Erro Hugging Face: {e}")
         return titulo_original
 
 def formatar_preco(valor):
