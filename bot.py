@@ -3,7 +3,7 @@ import os, re, random, pytz, pyshorteners, requests
 from datetime import datetime, timedelta, time as dtime
 import pandas as pd
 from io import BytesIO
-from huggingface_hub import InferenceClient  # para gerar título com IA gratuita
+from huggingface_hub import InferenceClient  # IA gratuita
 
 # -------- Configurações --------
 TOKEN = os.getenv("BOT_TOKEN")
@@ -18,10 +18,8 @@ TZ = pytz.timezone("America/Sao_Paulo")
 
 LINK_CENTRAL = "https://atom.bio/ofertas_express"
 
-# Lista de links CSV (separe por vírgula no .env)
 CSV_LINKS = [link.strip() for link in os.getenv("CSV_URLS", "").split(",") if link.strip()]
 
-# Variáveis globais para controle de envio
 enviados_global = set()
 indice_global = 0
 
@@ -32,24 +30,41 @@ def encurtar_link(link):
     except:
         return link
 
+def _sanitizar_linha(texto: str) -> str:
+    if not texto:
+        return ""
+    t = texto.strip()
+    t = t.replace("Título:", "").replace("Titulo:", "")
+    t = t.strip(' "\'“”‘’`')
+    lixos = ["aqui está", "aqui vai", "título sugerido", "sugestão de título", "headline", "título:"]
+    tl = t.lower()
+    if any(x in tl for x in lixos) and ":" in t:
+        t = t.split(":", 1)[-1].strip()
+    return t[:80]
+
 def gerar_titulo_descontraido_ia(titulo_original):
     try:
         client = InferenceClient(model=HF_MODEL, token=HF_TOKEN)
         prompt = (
-            f"Crie um título curto, descontraído e chamativo para este produto, "
-            f"mantendo o sentido e sem inventar informações. Depois, pule uma linha "
-            f"e coloque o título original completo.\n\nTítulo: {titulo_original}"
+            "Escreva apenas uma frase curta (máx. 10 palavras), descontraída e chamativa, "
+            "sem emojis, que resuma este produto em português do Brasil. "
+            "Não repita o título, não adicione rótulos como 'Título:'. "
+            f"\nProduto: {titulo_original}\n"
+            "Responda somente com a frase curta."
         )
         resposta = client.text_generation(
             prompt,
-            max_new_tokens=50,
+            max_new_tokens=32,
             temperature=0.8,
             do_sample=True
         )
-        return resposta.strip()
+        linha_curta = _sanitizar_linha(resposta.splitlines()[0] if resposta else "")
+        if not linha_curta:
+            linha_curta = "Pra deixar seu dia mais prático"
+        return linha_curta
     except Exception as e:
         print(f"Erro Hugging Face: {e}")
-        return titulo_original
+        return "Oferta especial pra você"
 
 def formatar_preco(valor):
     try:
@@ -71,13 +86,13 @@ def gerar_texto_preco(precos):
         ]
         return random.choice(modelos_unico)
     else:
-        preco_anterior, preco_atual = precos
+        preco_antigo, preco_atual = precos
         modelos = [
-            f"💰 De: {preco_anterior}\n✅ Por: {preco_atual}",
-            f"💸 Antes {preco_anterior}, agora só {preco_atual}!",
-            f"🔥 De {preco_anterior} caiu para {preco_atual}!",
-            f"🎉 De {preco_anterior} por apenas {preco_atual}!",
-            f"➡️ Aproveite: {preco_anterior} → {preco_atual}"
+            f"💰 De: {preco_antigo}\n✅ Por: {preco_atual}",
+            f"💸 Antes {preco_antigo}, agora só {preco_atual}!",
+            f"🔥 De {preco_antigo} caiu para {preco_atual}!",
+            f"🎉 De {preco_antigo} por apenas {preco_atual}!",
+            f"➡️ Aproveite: {preco_antigo} → {preco_atual}"
         ]
         return random.choice(modelos)
 
@@ -108,7 +123,7 @@ def mapear_colunas(df):
         "titulo": achar("titulo", "title", "name", "produto", "product_name", "nome"),
         "preco": achar("preco", "sale_price", "valor", "current_price", "preço atual"),
         "preco_antigo": achar("price", "old_price", "preco_original", "original_price", "preço original"),
-        "imagem": achar("imagem", "锘縤mage_link", "img_url", "foto", "picture")
+        "imagem": achar("imagem", "锘縤mage_link", "img_url", "image_link_3", "picture")
     }
 
 async def processar_csv(context: ContextTypes.DEFAULT_TYPE):
@@ -153,9 +168,11 @@ async def processar_csv(context: ContextTypes.DEFAULT_TYPE):
             else:
                 precos = [preco_atual]
 
-            titulo = gerar_titulo_descontraido_ia(titulo_manual)
+            titulo_curto = gerar_titulo_descontraido_ia(titulo_manual)
+            titulo_final = f"{titulo_curto}\n\n{titulo_manual}"
+
             link_encurtado = encurtar_link(link_produto)
-            anuncio = criar_anuncio(link_encurtado, titulo, precos)
+            anuncio = criar_anuncio(link_encurtado, titulo_final, precos)
 
             link_imagem = None
             if mapeamento["imagem"] and pd.notna(row[mapeamento["imagem"]]):
@@ -166,7 +183,7 @@ async def processar_csv(context: ContextTypes.DEFAULT_TYPE):
             else:
                 await context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
 
-            return  # garante que só envia 1 produto por execução
+            return
 
         except Exception as e:
             await context.bot.send_message(chat_id=ADMIN_ID, text=f"⚠️ Erro ao processar CSV {url_csv}: {e}")
@@ -249,7 +266,6 @@ async def enviar_csv_intervalo(context: ContextTypes.DEFAULT_TYPE):
     if dtime(8, 0) <= agora <= dtime(23, 0):
         await processar_csv(context)
 
-# -------- Mensagens manuais --------
 async def processar_mensagem(update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -272,8 +288,9 @@ async def processar_mensagem(update, context: ContextTypes.DEFAULT_TYPE):
 
     precos = [preco1] if not preco2 else [preco1, preco2]
     link_encurtado = encurtar_link(link)
-    titulo = gerar_titulo_descontraido_ia(titulo_manual)
-    anuncio = criar_anuncio(link_encurtado, titulo, precos)
+    titulo_curto = gerar_titulo_descontraido_ia(titulo_manual)
+    titulo_final = f"{titulo_curto}\n\n{titulo_manual}"
+    anuncio = criar_anuncio(link_encurtado, titulo_final, precos)
 
     if horario:
         try:
@@ -296,7 +313,6 @@ async def processar_mensagem(update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
         await update.message.reply_text(f"✅ Link enviado imediatamente com título: {titulo_manual}")
 
-# -------- Comando /start --------
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         'Envie: link "Título" preço_anterior preço_atual [HH:MM] ou link "Título" preço [HH:MM]\n'
@@ -307,11 +323,9 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
         'Use /comandos para ver todos os comandos.'
     )
 
-# -------- Função principal --------
 def main():
     application = Application.builder().token(TOKEN).build()
 
-    # Handlers de comando
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("csv", comando_csv))
     application.add_handler(CommandHandler("stopcsv", stopcsv))
@@ -319,14 +333,12 @@ def main():
     application.add_handler(CommandHandler("comandos", comandos))
     application.add_handler(CommandHandler("status", status))
 
-    # Handler de mensagens manuais
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_mensagem))
 
-    # Agendamento de envio a cada 10 minutos (começa imediatamente)
     application.job_queue.run_repeating(
         enviar_csv_intervalo,
-        interval=60,  # 10 minutos
-        first=0,       # começa já na inicialização
+        interval=600,
+        first=0,
         name="csv_intervalo"
     )
 
