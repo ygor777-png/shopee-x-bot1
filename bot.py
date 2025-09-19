@@ -47,7 +47,7 @@ def gerar_titulo_descontraido_ia(titulo_original):
     try:
         if not HF_TOKEN:
             print("❌ Erro Hugging Face: HF_TOKEN não configurado no ambiente.")
-            return "Oferta especial para você"
+            return "Oferta especial pra você"
 
         client = InferenceClient(model=HF_MODEL, token=HF_TOKEN)
         prompt = (
@@ -65,9 +65,13 @@ def gerar_titulo_descontraido_ia(titulo_original):
             do_sample=True
         )
 
+        if not resposta or not str(resposta).strip():
+            print("⚠️ Hugging Face retornou resposta vazia.")
+            return "Oferta especial pra você"
+
         print(f"🔍 Resposta bruta Hugging Face: {repr(resposta)}")
 
-        linha_curta = _sanitizar_linha(resposta.splitlines()[0] if resposta else "")
+        linha_curta = _sanitizar_linha(str(resposta).splitlines()[0])
         if not linha_curta:
             linha_curta = "Pra deixar seu dia mais prático"
         return linha_curta
