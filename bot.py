@@ -83,7 +83,6 @@ def criar_anuncio(link, titulo, precos):
 🌐 Siga nossas redes sociais:
 {LINK_CENTRAL}"""
 
-# -------- Mapeamento automático de colunas --------
 def mapear_colunas(df):
     colunas = {c.lower(): c for c in df.columns}
 
@@ -100,17 +99,14 @@ def mapear_colunas(df):
         "preco_antigo": achar("price", "old_price", "preco_original", "original_price", "preço original")
     }
 
-# -------- Processar CSV (envia 1 produto por execução e não repete) --------
 async def processar_csv(context: ContextTypes.DEFAULT_TYPE):
     global enviados_global, indice_global
 
     for url_csv in CSV_LINKS:
         try:
-            # Baixa e lê o CSV
             resp = requests.get(url_csv)
             df = pd.read_csv(BytesIO(resp.content))
 
-            # Mapeia colunas
             mapeamento = mapear_colunas(df)
             if not mapeamento["link"] or not mapeamento["titulo"] or not mapeamento["preco"]:
                 colunas_encontradas = ", ".join(df.columns)
@@ -123,17 +119,13 @@ async def processar_csv(context: ContextTypes.DEFAULT_TYPE):
                 )
                 continue
 
-            # Se chegou no fim do CSV, recomeça
             if indice_global >= len(df):
                 indice_global = 0
 
-            # Pega apenas 1 produto por execução
             row = df.iloc[indice_global]
             indice_global += 1
 
             link_produto = str(row[mapeamento["link"]]).strip()
-
-            # Se já foi enviado antes, pula
             if link_produto in enviados_global:
                 return
             enviados_global.add(link_produto)
@@ -144,7 +136,11 @@ async def processar_csv(context: ContextTypes.DEFAULT_TYPE):
             if mapeamento["preco_antigo"] and pd.notna(row[mapeamento["preco_antigo"]]):
                 preco_antigo = formatar_preco(row[mapeamento["preco_antigo"]])
 
-            precos = [preco_atual] if not preco_antigo else [preco_antigo, preco_atual]
+            if preco_antigo and preco_antigo != preco_atual:
+                precos = [preco_antigo, preco_atual]
+            else:
+                precos = [preco_atual]
+
             link_encurtado = encurtar_link(link_produto)
             titulo = gerar_titulo_criativo(titulo_manual)
             anuncio = criar_anuncio(link_encurtado, titulo, precos)
@@ -175,6 +171,37 @@ async def stopcsv(update, context: ContextTypes.DEFAULT_TYPE):
     for job in jobs:
         job.schedule_removal()
     await update.message.reply_text("🛑 Agendamento de envio automático cancelado.")
+
+# -------- Retomar agendamento --------
+async def playcsv(update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_ID:
+        await update.message.reply_text("❌ Você não tem permissão para usar este comando.")
+        return
+
+    jobs = context.job_queue.get_jobs_by_name("csv_intervalo")
+    if jobs:
+        await update.message.reply_text("⚠️ O envio automático já está ativo.")
+        return
+
+    context.job_queue.run_repeating(
+        enviar_csv_intervalo,
+        interval=600,  # 10 minutos
+        first=dtime(hour=8, minute=0, tzinfo=TZ),
+        name="csv_intervalo"
+    )
+    await update.message.reply_text("▶️ Envio automático do CSV reativado!")
+
+# -------- Listar comandos --------
+async def comandos(update, context: ContextTypes.DEFAULT_TYPE):
+    lista = (
+        "📜 *Comandos disponíveis:*\n\n"
+        "/start - Instruções de uso\n"
+        "/csv - Enviar ofertas do CSV agora (admin)\n"
+        "/stopcsv - Parar envio automático (admin)\n"
+        "/playcsv - Retomar envio automático (admin)\n"
+        "/comandos - Mostrar esta lista\n"
+    )
+    await update.message.reply_text(lista, parse_mode="Markdown")
 
 # -------- Envio automático a cada 10 minutos --------
 async def enviar_csv_intervalo(context: ContextTypes.DEFAULT_TYPE):
@@ -234,7 +261,9 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         'Envie: link "Título" preço_anterior preço_atual [HH:MM] ou link "Título" preço [HH:MM]\n'
         'Use /csv para enviar manualmente as ofertas do CSV agora (somente admin).\n'
-        'Use /stopcsv para parar o envio automático.'
+        'Use /stopcsv para parar o envio automático.\n'
+        'Use /playcsv para retomar o envio automático.\n'
+        'Use /comandos para ver todos os comandos.'
     )
 
 # -------- Função principal --------
@@ -245,6 +274,8 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("csv", comando_csv))
     application.add_handler(CommandHandler("stopcsv", stopcsv))
+    application.add_handler(CommandHandler("playcsv", playcsv))
+    application.add_handler(CommandHandler("comandos", comandos))
 
     # Handler de mensagens manuais
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_mensagem))
