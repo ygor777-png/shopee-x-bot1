@@ -325,7 +325,7 @@ def main():
     # Agendamento de envio a cada 10 minutos (começa imediatamente)
     application.job_queue.run_repeating(
         enviar_csv_intervalo,
-        interval=600,  # 10 minutos
+        interval=60,  # 10 minutos
         first=0,       # começa já na inicialização
         name="csv_intervalo"
     )
