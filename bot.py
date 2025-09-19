@@ -8,7 +8,7 @@ from huggingface_hub import InferenceClient  # IA gratuita
 # -------- Configurações --------
 TOKEN = os.getenv("BOT_TOKEN")
 HF_TOKEN = os.getenv("HF_TOKEN")  # token do Hugging Face
-HF_MODEL = "tiiuae/falcon-7b-instruct"  # modelo compatível com text-generation
+HF_MODEL = "google/flan-t5-large"  # modelo compatível com text-generation
 
 GRUPO_ENTRADA_ID = int(os.getenv("GRUPO_ENTRADA_ID", "-4653176769"))
 GRUPO_SAIDA_ID = int(os.getenv("GRUPO_SAIDA_ID", "-1001592474533"))
@@ -46,8 +46,8 @@ def _sanitizar_linha(texto: str) -> str:
 def gerar_titulo_descontraido_ia(titulo_original):
     try:
         if not HF_TOKEN:
-            print("Erro Hugging Face: HF_TOKEN não configurado.")
-            return "Oferta especial pra você"
+            print("❌ Erro Hugging Face: HF_TOKEN não configurado no ambiente.")
+            return "Oferta especial para você"
 
         client = InferenceClient(model=HF_MODEL, token=HF_TOKEN)
         prompt = (
@@ -57,18 +57,23 @@ def gerar_titulo_descontraido_ia(titulo_original):
             f"\nProduto: {titulo_original}\n"
             "Responda somente com a frase curta."
         )
+
         resposta = client.text_generation(
             prompt,
             max_new_tokens=32,
             temperature=0.8,
             do_sample=True
         )
+
+        print(f"🔍 Resposta bruta Hugging Face: {repr(resposta)}")
+
         linha_curta = _sanitizar_linha(resposta.splitlines()[0] if resposta else "")
         if not linha_curta:
             linha_curta = "Pra deixar seu dia mais prático"
         return linha_curta
+
     except Exception as e:
-        print(f"Erro Hugging Face: {e}")
+        print(f"❌ Erro Hugging Face: {type(e).__name__} - {e}")
         return "Oferta especial pra você"
 
 def formatar_preco(valor):
