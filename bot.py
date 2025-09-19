@@ -1,11 +1,14 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import os, re, random, pytz, pyshorteners, requests, time as time_module
+import os, re, random, pytz, pyshorteners, requests
 from datetime import datetime, timedelta, time as dtime
 import pandas as pd
 from io import BytesIO
+import openai  # para gerar título com IA
 
 # -------- Configurações --------
 TOKEN = os.getenv("BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai.api_key = OPENAI_API_KEY
 
 GRUPO_ENTRADA_ID = int(os.getenv("GRUPO_ENTRADA_ID", "-4653176769"))
 GRUPO_SAIDA_ID = int(os.getenv("GRUPO_SAIDA_ID", "-1001592474533"))
@@ -29,16 +32,23 @@ def encurtar_link(link):
     except:
         return link
 
-def gerar_titulo_criativo(titulo_manual):
-    prefixos = [
-        "🔥 Oferta Imperdível:",
-        "⚡ Promoção Relâmpago:",
-        "✨ Destaque do Dia:",
-        "🔍 Achado Especial:",
-        "🛒 Super Desconto:",
-        "🎉 Oferta Especial:"
-    ]
-    return f"{random.choice(prefixos)} {titulo_manual}"
+def gerar_titulo_descontraido_ia(titulo_original):
+    prompt = (
+        f"Crie um título curto, descontraído e chamativo para este produto, "
+        f"mantendo o sentido e sem inventar informações. Depois, pule uma linha "
+        f"e coloque o título original completo.\n\nTítulo: {titulo_original}"
+    )
+    try:
+        resposta = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=60,
+            temperature=0.8
+        )
+        return resposta.choices[0].message["content"].strip()
+    except Exception as e:
+        print(f"Erro IA: {e}")
+        return titulo_original
 
 def formatar_preco(valor):
     try:
@@ -78,7 +88,7 @@ def criar_anuncio(link, titulo, precos):
 
 👉 Compre por aqui: {link}
 
-⚠️ Corre que acaba rapido!
+⚠️ Corre que acaba rápido!
 
 🌐 Siga nossas redes sociais:
 {LINK_CENTRAL}"""
@@ -96,7 +106,8 @@ def mapear_colunas(df):
         "link": achar("link", "url", "product_link", "produto_url", "url do produto"),
         "titulo": achar("titulo", "title", "name", "produto", "product_name", "nome"),
         "preco": achar("preco", "sale_price", "valor", "current_price", "preço atual"),
-        "preco_antigo": achar("price", "old_price", "preco_original", "original_price", "preço original")
+        "preco_antigo": achar("price", "old_price", "preco_original", "original_price", "preço original"),
+        "imagem": achar("imagem", "锘縤mage_link", "img_url", "foto", "picture")
     }
 
 async def processar_csv(context: ContextTypes.DEFAULT_TYPE):
@@ -141,16 +152,24 @@ async def processar_csv(context: ContextTypes.DEFAULT_TYPE):
             else:
                 precos = [preco_atual]
 
+            titulo = gerar_titulo_descontraido_ia(titulo_manual)
             link_encurtado = encurtar_link(link_produto)
-            titulo = gerar_titulo_criativo(titulo_manual)
             anuncio = criar_anuncio(link_encurtado, titulo, precos)
 
-            await context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
+            link_imagem = None
+            if mapeamento["imagem"] and pd.notna(row[mapeamento["imagem"]]):
+                link_imagem = str(row[mapeamento["imagem"]]).strip()
+
+            if link_imagem:
+                await context.bot.send_photo(chat_id=GRUPO_SAIDA_ID, photo=link_imagem, caption=anuncio)
+            else:
+                await context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
+
+            return  # garante que só envia 1 produto por execução
 
         except Exception as e:
             await context.bot.send_message(chat_id=ADMIN_ID, text=f"⚠️ Erro ao processar CSV {url_csv}: {e}")
 
-# -------- Comando manual para rodar CSV --------
 async def comando_csv(update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_ID:
         await update.message.reply_text("❌ Você não tem permissão para usar este comando.")
@@ -159,7 +178,6 @@ async def comando_csv(update, context: ContextTypes.DEFAULT_TYPE):
     await processar_csv(context)
     await update.message.reply_text("✅ Envio manual do CSV concluído!")
 
-# -------- Parar agendamento --------
 async def stopcsv(update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_ID:
         await update.message.reply_text("❌ Você não tem permissão para usar este comando.")
@@ -172,7 +190,6 @@ async def stopcsv(update, context: ContextTypes.DEFAULT_TYPE):
         job.schedule_removal()
     await update.message.reply_text("🛑 Agendamento de envio automático cancelado.")
 
-# -------- Retomar agendamento --------
 async def playcsv(update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_ID:
         await update.message.reply_text("❌ Você não tem permissão para usar este comando.")
@@ -186,12 +203,11 @@ async def playcsv(update, context: ContextTypes.DEFAULT_TYPE):
     context.job_queue.run_repeating(
         enviar_csv_intervalo,
         interval=600,  # 10 minutos
-        first=dtime(hour=8, minute=0, tzinfo=TZ),
+        first=0,       # começa imediatamente
         name="csv_intervalo"
     )
     await update.message.reply_text("▶️ Envio automático do CSV reativado!")
 
-# -------- Listar comandos --------
 async def comandos(update, context: ContextTypes.DEFAULT_TYPE):
     lista = (
         "📜 *Comandos disponíveis:*\n\n"
@@ -199,11 +215,34 @@ async def comandos(update, context: ContextTypes.DEFAULT_TYPE):
         "/csv - Enviar ofertas do CSV agora (admin)\n"
         "/stopcsv - Parar envio automático (admin)\n"
         "/playcsv - Retomar envio automático (admin)\n"
+        "/status - Verificar status do bot\n"
         "/comandos - Mostrar esta lista\n"
     )
     await update.message.reply_text(lista, parse_mode="Markdown")
 
-# -------- Envio automático a cada 10 minutos --------
+async def status(update, context: ContextTypes.DEFAULT_TYPE):
+    agora = datetime.now(TZ).strftime("%d/%m/%Y %H:%M:%S")
+    jobs = context.job_queue.get_jobs_by_name("csv_intervalo")
+    status_envio = "✅ Ativo" if jobs else "⛔ Parado"
+    total_enviados = len(enviados_global)
+
+    proxima_execucao = "—"
+    if jobs:
+        try:
+            proxima_execucao = jobs[0].next_t.strftime("%d/%m/%Y %H:%M:%S")
+        except:
+            pass
+
+    texto = (
+        f"📊 *Status do Bot*\n\n"
+        f"🕒 Horário atual: {agora}\n"
+        f"📦 Envio automático: {status_envio}\n"
+        f"📤 Produtos enviados nesta sessão: {total_enviados}\n"
+        f"⏭ Próxima execução: {proxima_execucao}"
+    )
+
+    await update.message.reply_text(texto, parse_mode="Markdown")
+
 async def enviar_csv_intervalo(context: ContextTypes.DEFAULT_TYPE):
     agora = datetime.now(TZ).time()
     if dtime(8, 0) <= agora <= dtime(23, 0):
@@ -232,7 +271,7 @@ async def processar_mensagem(update, context: ContextTypes.DEFAULT_TYPE):
 
     precos = [preco1] if not preco2 else [preco1, preco2]
     link_encurtado = encurtar_link(link)
-    titulo = gerar_titulo_criativo(titulo_manual)
+    titulo = gerar_titulo_descontraido_ia(titulo_manual)
     anuncio = criar_anuncio(link_encurtado, titulo, precos)
 
     if horario:
@@ -248,13 +287,13 @@ async def processar_mensagem(update, context: ContextTypes.DEFAULT_TYPE):
                 delay
             )
             await update.message.reply_text(
-                f"✅ Link agendado para {agendamento.strftime('%H:%M')} com título: {titulo}"
+                f"✅ Link agendado para {agendamento.strftime('%H:%M')} com título: {titulo_manual}"
             )
         except Exception as e:
             await update.message.reply_text(f"⚠️ Horário inválido. Erro: {e}")
     else:
         await context.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
-        await update.message.reply_text(f"✅ Link enviado imediatamente com título: {titulo}")
+        await update.message.reply_text(f"✅ Link enviado imediatamente com título: {titulo_manual}")
 
 # -------- Comando /start --------
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
@@ -263,6 +302,7 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
         'Use /csv para enviar manualmente as ofertas do CSV agora (somente admin).\n'
         'Use /stopcsv para parar o envio automático.\n'
         'Use /playcsv para retomar o envio automático.\n'
+        'Use /status para ver o status do bot.\n'
         'Use /comandos para ver todos os comandos.'
     )
 
@@ -276,6 +316,7 @@ def main():
     application.add_handler(CommandHandler("stopcsv", stopcsv))
     application.add_handler(CommandHandler("playcsv", playcsv))
     application.add_handler(CommandHandler("comandos", comandos))
+    application.add_handler(CommandHandler("status", status))
 
     # Handler de mensagens manuais
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_mensagem))
