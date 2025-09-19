@@ -3,3 +3,4 @@ pandas
 pyshorteners
 pytz
 requests
+huggingface_hub
