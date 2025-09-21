@@ -42,21 +42,29 @@ def _sanitizar_linha(texto: str) -> str:
         t = t.split(":", 1)[-1].strip()
     return t[:160]  # suporta até 20 palavras
 
+def _fallback_titulo_local(titulo_original: str) -> str:
+    palavras = titulo_original.split()
+    if not palavras:
+        return "Oferta imperdível para você"
+    if len(palavras) > 5:
+        return " ".join(palavras[:5]) + "..."
+    return titulo_original
+
 def gerar_titulo_descontraido_ia(titulo_original):
     try:
         if not HF_TOKEN:
             print("❌ HF_TOKEN não configurado.")
-            return "Oferta especial pra você"
+            return _fallback_titulo_local(titulo_original)
 
         url = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
         headers = {"Authorization": f"Bearer {HF_TOKEN}"}
         payload = {
             "inputs": (
-                "Escreva apenas uma frase curta (máx. 20 palavras), descontraída e chamativa, "
-                "sem emojis, que resuma este produto em português do Brasil. "
-                "Não repita o título, não adicione rótulos como 'Título:'. "
-                f"\nProduto: {titulo_original}\n"
-                "Responda somente com a frase curta."
+                "Crie um título curto e chamativo (máx. 20 palavras) para este produto, "
+                "em português do Brasil, sem emojis, sem repetir o título original, "
+                "e que desperte interesse de compra. "
+                f"Título original: {titulo_original}\n"
+                "Responda apenas com o título."
             ),
             "parameters": {"max_new_tokens": 60, "temperature": 0.8, "do_sample": True}
         }
@@ -64,7 +72,7 @@ def gerar_titulo_descontraido_ia(titulo_original):
         resp = requests.post(url, headers=headers, json=payload, timeout=30)
         if resp.status_code != 200:
             print(f"❌ Erro HF {resp.status_code}: {resp.text}")
-            return "Oferta especial pra você"
+            return _fallback_titulo_local(titulo_original)
 
         data = resp.json()
         print(f"🔍 Resposta HF: {data}")
@@ -77,14 +85,14 @@ def gerar_titulo_descontraido_ia(titulo_original):
 
         if not texto.strip():
             print("⚠️ Hugging Face retornou resposta vazia.")
-            return "Oferta especial pra você"
+            return _fallback_titulo_local(titulo_original)
 
         linha_curta = _sanitizar_linha(texto)
-        return linha_curta if linha_curta else "Pra deixar seu dia mais prático"
+        return linha_curta if linha_curta else _fallback_titulo_local(titulo_original)
 
     except Exception as e:
         print(f"❌ Erro Hugging Face: {type(e).__name__} - {e}")
-        return "Oferta especial pra você"
+        return _fallback_titulo_local(titulo_original)
 
 def formatar_preco(valor):
     try:
@@ -129,6 +137,26 @@ def criar_anuncio(link, titulo, precos):
 🌐 Siga nossas redes sociais:
 {LINK_CENTRAL}"""
 
+async def start(update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👋 Olá! Eu sou o bot de ofertas.\n"
+        "Use /comandos para ver a lista de comandos disponíveis."
+    )
+
+async def comando_lista(update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📜 *Comandos disponíveis:*\n"
+        "/status - Mostra o status do bot\n"
+        "/csv - Força o envio de um produto agora\n"
+        "/comandos - Lista todos os comandos\n"
+        "/start - Mensagem de boas-vindas",
+        parse_mode="Markdown"
+    )
+
+async def comando_csv(update, context: ContextTypes.DEFAULT_TYPE):
+    await enviar_produto(context)
+    await update.message.reply_text("✅ Produto enviado manualmente.")
+
 async def status(update, context: ContextTypes.DEFAULT_TYPE):
     agora = datetime.now(TZ).strftime("%d/%m/%Y %H:%M:%S")
     jobs = context.job_queue.jobs()
@@ -151,13 +179,6 @@ async def status(update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await update.message.reply_text(texto_status, parse_mode="Markdown")
-
-def agendar_envio(context: ContextTypes.DEFAULT_TYPE):
-    context.job_queue.run_repeating(
-        enviar_produto,
-        interval=60*60*4,  # a cada 4 horas
-        first=0
-    )
 
 def processar_csv():
     global enviados_global
@@ -211,12 +232,12 @@ async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
         link_produto = str(row.get("Link", row.get("url", "")))
         precos = []
 
-        if "Preço" in row:
+        if "Preço" in row and not pd.isna(row["Preço"]):
             precos.append(formatar_preco(row["Preço"]))
-        if "Preço Antigo" in row:
+        if "Preço Antigo" in row and not pd.isna(row["Preço Antigo"]):
             precos.insert(0, formatar_preco(row["Preço Antigo"]))
 
-        # Gera título descontraído com IA
+        # Gera título descontraído com IA (ou fallback local)
         titulo_curto = gerar_titulo_descontraido_ia(titulo_original)
 
         # Encurta link
@@ -240,6 +261,9 @@ def main():
     application = Application.builder().token(TOKEN).build()
 
     # Comandos
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("comandos", comando_lista))
+    application.add_handler(CommandHandler("csv", comando_csv))
     application.add_handler(CommandHandler("status", status))
 
     # Inicia agendamento automático
