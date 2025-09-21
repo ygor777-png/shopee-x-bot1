@@ -51,14 +51,14 @@ def _sanitizar_linha(texto: str) -> str:
     tl = t.lower()
     if any(x in tl for x in lixos) and ":" in t:
         t = t.split(":", 1)[-1].strip()
-    return t[:160]  # suporta até 50 palavras, mas mantém limite de caracteres
+    return t[:500]  # suporta até ~150 palavras
 
 def _fallback_titulo_local(titulo_original: str) -> str:
     palavras = titulo_original.split()
     if not palavras:
         return "Oferta imperdível para você"
-    if len(palavras) > 8:
-        return " ".join(palavras[:8]) + "..."
+    if len(palavras) > 12:
+        return " ".join(palavras[:12]) + "..."
     return titulo_original
 
 def gerar_titulo_descontraido_ia(titulo_original):
@@ -71,13 +71,13 @@ def gerar_titulo_descontraido_ia(titulo_original):
         headers = {"Authorization": f"Bearer {HF_TOKEN}"}
         payload = {
             "inputs": (
-                "Crie um título curto e chamativo (máx. 50 palavras) para este produto, "
+                "Crie um título chamativo (máx. 150 palavras) para este produto, "
                 "em português do Brasil, sem emojis, sem repetir o título original, "
                 "e que desperte interesse de compra. "
                 f"Título original: {titulo_original}\n"
                 "Responda apenas com o título."
             ),
-            "parameters": {"max_new_tokens": 100, "temperature": 0.8, "do_sample": True}
+            "parameters": {"max_new_tokens": 300, "temperature": 0.8, "do_sample": True}
         }
 
         resp = requests.post(url, headers=headers, json=payload, timeout=30)
