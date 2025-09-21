@@ -31,6 +31,7 @@ def achar(row, *possiveis_nomes):
 
 def encurtar_link(link):
     try:
+        from urllib.parse import urlparse
         if not link or not urlparse(link).scheme.startswith("http"):
             print(f"⚠️ Link inválido, não será encurtado: {link}")
             return link
@@ -50,14 +51,14 @@ def _sanitizar_linha(texto: str) -> str:
     tl = t.lower()
     if any(x in tl for x in lixos) and ":" in t:
         t = t.split(":", 1)[-1].strip()
-    return t[:160]  # suporta até 20 palavras
+    return t[:160]  # suporta até 50 palavras, mas mantém limite de caracteres
 
 def _fallback_titulo_local(titulo_original: str) -> str:
     palavras = titulo_original.split()
     if not palavras:
         return "Oferta imperdível para você"
-    if len(palavras) > 5:
-        return " ".join(palavras[:5]) + "..."
+    if len(palavras) > 8:
+        return " ".join(palavras[:8]) + "..."
     return titulo_original
 
 def gerar_titulo_descontraido_ia(titulo_original):
@@ -70,13 +71,13 @@ def gerar_titulo_descontraido_ia(titulo_original):
         headers = {"Authorization": f"Bearer {HF_TOKEN}"}
         payload = {
             "inputs": (
-                "Crie um título curto e chamativo (máx. 20 palavras) para este produto, "
+                "Crie um título curto e chamativo (máx. 50 palavras) para este produto, "
                 "em português do Brasil, sem emojis, sem repetir o título original, "
                 "e que desperte interesse de compra. "
                 f"Título original: {titulo_original}\n"
                 "Responda apenas com o título."
             ),
-            "parameters": {"max_new_tokens": 60, "temperature": 0.8, "do_sample": True}
+            "parameters": {"max_new_tokens": 100, "temperature": 0.8, "do_sample": True}
         }
 
         resp = requests.post(url, headers=headers, json=payload, timeout=30)
@@ -244,7 +245,7 @@ async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
         titulo_original = achar(row, "titulo", "title", "name", "produto", "product_name", "nome")
         preco_atual = achar(row, "preco", "sale_price", "valor", "current_price", "preço atual")
         preco_antigo = achar(row, "price", "old_price", "preco_original", "original_price", "preço original")
-        imagem_url = achar(row, "imagem", "锘縤mage_link", "img_url", "foto", "picture")
+        imagem_url = achar(row, "image_link", "锘縤mage_link", "img_urll", "foto", "picture")
 
         # Monta lista de preços
         precos = []
@@ -262,11 +263,18 @@ async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
         # Monta anúncio
         anuncio = criar_anuncio(link_encurtado, titulo_curto, precos)
 
-        # Envia para o grupo de saída
-        await context.bot.send_message(
-            chat_id=GRUPO_SAIDA_ID,
-            text=anuncio
-        )
+        # Envia com imagem se houver
+        if imagem_url and imagem_url.startswith("http"):
+            await context.bot.send_photo(
+                chat_id=GRUPO_SAIDA_ID,
+                photo=imagem_url,
+                caption=anuncio
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=GRUPO_SAIDA_ID,
+                text=anuncio
+            )
 
         print(f"✅ Produto enviado: {titulo_curto}")
 
