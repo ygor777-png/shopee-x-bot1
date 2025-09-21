@@ -3,6 +3,7 @@ import os, re, random, pytz, pyshorteners, requests
 from datetime import datetime, timedelta, time as dtime
 import pandas as pd
 from io import BytesIO
+from urllib.parse import urlparse
 
 # -------- Configurações --------
 TOKEN = os.getenv("BOT_TOKEN")
@@ -22,8 +23,17 @@ CSV_LINKS = [link.strip() for link in os.getenv("CSV_URLS", "").split(",") if li
 enviados_global = set()
 indice_global = 0
 
+def achar(row, *possiveis_nomes):
+    for nome in possiveis_nomes:
+        if nome in row and not pd.isna(row[nome]) and str(row[nome]).strip():
+            return str(row[nome]).strip()
+    return ""
+
 def encurtar_link(link):
     try:
+        if not link or not urlparse(link).scheme.startswith("http"):
+            print(f"⚠️ Link inválido, não será encurtado: {link}")
+            return link
         s = pyshorteners.Shortener()
         return s.tinyurl.short(link)
     except Exception as e:
@@ -103,6 +113,8 @@ def formatar_preco(valor):
         return str(valor)
 
 def gerar_texto_preco(precos):
+    if not precos:
+        return "💰 Preço sob consulta"
     if len(precos) == 1:
         preco = precos[0]
         modelos_unico = [
@@ -227,20 +239,24 @@ async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
             print("Nenhum produto para enviar.")
             return
 
-        # Extrai dados do CSV
-        titulo_original = str(row.get("Título", row.get("title", "")))
-        link_produto = str(row.get("Link", row.get("url", "")))
-        precos = []
+        # Extrai dados do CSV usando a função achar
+        link_produto = achar(row, "link", "url", "product_link", "produto_url", "url do produto")
+        titulo_original = achar(row, "titulo", "title", "name", "produto", "product_name", "nome")
+        preco_atual = achar(row, "preco", "sale_price", "valor", "current_price", "preço atual")
+        preco_antigo = achar(row, "price", "old_price", "preco_original", "original_price", "preço original")
+        imagem_url = achar(row, "imagem", "锘縤mage_link", "img_url", "foto", "picture")
 
-        if "Preço" in row and not pd.isna(row["Preço"]):
-            precos.append(formatar_preco(row["Preço"]))
-        if "Preço Antigo" in row and not pd.isna(row["Preço Antigo"]):
-            precos.insert(0, formatar_preco(row["Preço Antigo"]))
+        # Monta lista de preços
+        precos = []
+        if preco_atual:
+            precos.append(formatar_preco(preco_atual))
+        if preco_antigo:
+            precos.insert(0, formatar_preco(preco_antigo))
 
         # Gera título descontraído com IA (ou fallback local)
         titulo_curto = gerar_titulo_descontraido_ia(titulo_original)
 
-        # Encurta link
+        # Encurta link se válido
         link_encurtado = encurtar_link(link_produto)
 
         # Monta anúncio
