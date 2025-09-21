@@ -239,7 +239,7 @@ async def play_csv(update, context: ContextTypes.DEFAULT_TYPE):
     if not job_envio:
         job_envio = context.job_queue.run_repeating(
             enviar_produto,
-            interval=60*60*4,  # a cada 4 horas
+            interval=60*20,  # a cada 20 minutos
             first=0
         )
         await update.message.reply_text("▶️ Envio automático retomado.")
@@ -261,7 +261,7 @@ def main():
     # Inicia agendamento automático imediatamente
     job_envio = application.job_queue.run_repeating(
         enviar_produto,
-        interval=60*20  # a cada 20 minutos
+        interval=60*20,  # a cada 20 minutos
         first=0
     )
 
@@ -270,3 +270,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
