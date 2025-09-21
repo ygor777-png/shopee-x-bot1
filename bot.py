@@ -52,6 +52,11 @@ def formatar_preco(valor):
 def gerar_texto_preco(precos):
     if not precos:
         return "💰 Preço sob consulta"
+
+    # Se houver dois preços e eles forem iguais, mantém só um
+    if len(precos) == 2 and precos[0] == precos[1]:
+        precos = [precos[0]]
+
     if len(precos) == 1:
         preco = precos[0]
         modelos_unico = [
@@ -75,7 +80,7 @@ def gerar_texto_preco(precos):
 
 def criar_anuncio(link, titulo, precos):
     texto_preco = gerar_texto_preco(precos)
-    return f"""⚡ EXPRESS ACHOU, CONFIRA!
+    return f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
 
 {titulo}
 
