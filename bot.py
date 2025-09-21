@@ -261,7 +261,7 @@ def main():
     # Inicia agendamento automático imediatamente
     job_envio = application.job_queue.run_repeating(
         enviar_produto,
-        interval=60*60*4,  # a cada 4 horas
+        interval=60*20  # a cada 20 minutos
         first=0
     )
 
