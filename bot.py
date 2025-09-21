@@ -192,7 +192,7 @@ async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
             precos.insert(0, formatar_preco(preco_antigo))
 
         # Monta anúncio com bordão fixo
-        anuncio = f"""⚡ EXPRESSA ACHOU, CONFIRA!
+        anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA!
 
 {titulo_original}
 
