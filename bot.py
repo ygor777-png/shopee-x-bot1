@@ -41,70 +41,6 @@ def encurtar_link(link):
         print(f"Erro ao encurtar link: {e}")
         return link
 
-def _sanitizar_linha(texto: str) -> str:
-    if not texto:
-        return ""
-    t = texto.strip()
-    t = t.replace("Título:", "").replace("Titulo:", "")
-    t = t.strip(' "\'“”‘’`')
-    lixos = ["aqui está", "aqui vai", "título sugerido", "sugestão de título", "headline", "título:"]
-    tl = t.lower()
-    if any(x in tl for x in lixos) and ":" in t:
-        t = t.split(":", 1)[-1].strip()
-    return t[:500]  # suporta até ~150 palavras
-
-def _fallback_titulo_local(titulo_original: str) -> str:
-    palavras = titulo_original.split()
-    if not palavras:
-        return "Oferta imperdível para você"
-    if len(palavras) > 12:
-        return " ".join(palavras[:12]) + "..."
-    return titulo_original
-
-def gerar_titulo_descontraido_ia(titulo_original):
-    try:
-        if not HF_TOKEN:
-            print("❌ HF_TOKEN não configurado.")
-            return _fallback_titulo_local(titulo_original)
-
-        url = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
-        headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-        payload = {
-            "inputs": (
-                "Crie um título chamativo (máx. 150 palavras) para este produto, "
-                "em português do Brasil, sem emojis, sem repetir o título original, "
-                "e que desperte interesse de compra. "
-                f"Título original: {titulo_original}\n"
-                "Responda apenas com o título."
-            ),
-            "parameters": {"max_new_tokens": 300, "temperature": 0.8, "do_sample": True}
-        }
-
-        resp = requests.post(url, headers=headers, json=payload, timeout=30)
-        if resp.status_code != 200:
-            print(f"❌ Erro HF {resp.status_code}: {resp.text}")
-            return _fallback_titulo_local(titulo_original)
-
-        data = resp.json()
-        print(f"🔍 Resposta HF: {data}")
-
-        texto = ""
-        if isinstance(data, list) and "generated_text" in data[0]:
-            texto = data[0]["generated_text"]
-        elif isinstance(data, dict) and "generated_text" in data:
-            texto = data["generated_text"]
-
-        if not texto.strip():
-            print("⚠️ Hugging Face retornou resposta vazia.")
-            return _fallback_titulo_local(titulo_original)
-
-        linha_curta = _sanitizar_linha(texto)
-        return linha_curta if linha_curta else _fallback_titulo_local(titulo_original)
-
-    except Exception as e:
-        print(f"❌ Erro Hugging Face: {type(e).__name__} - {e}")
-        return _fallback_titulo_local(titulo_original)
-
 def formatar_preco(valor):
     try:
         valor = re.sub(r'[^\d,\.]', '', str(valor))
@@ -139,7 +75,9 @@ def gerar_texto_preco(precos):
 
 def criar_anuncio(link, titulo, precos):
     texto_preco = gerar_texto_preco(precos)
-    return f"""{titulo}
+    return f"""⚡ EXPRESS ACHOU, CONFIRA!
+
+{titulo}
 
 {texto_preco}
 
@@ -177,7 +115,6 @@ async def status(update, context: ContextTypes.DEFAULT_TYPE):
 
     if jobs:
         try:
-            # Converte para o fuso horário configurado
             proxima_execucao_dt = jobs[0].next_t.astimezone(TZ)
             proxima_execucao = proxima_execucao_dt.strftime("%d/%m/%Y %H:%M:%S")
         except Exception as e:
@@ -232,7 +169,7 @@ def processar_csv():
     enviados_global.add(row["ID"])
 
     return row
-
+    
 async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
     try:
         row = processar_csv()
@@ -254,14 +191,19 @@ async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
         if preco_antigo:
             precos.insert(0, formatar_preco(preco_antigo))
 
-        # Gera título descontraído com IA (ou fallback local)
-        titulo_curto = gerar_titulo_descontraido_ia(titulo_original)
+        # Monta anúncio com bordão fixo
+        anuncio = f"""⚡ EXPRESSA ACHOU, CONFIRA!
 
-        # Encurta link se válido
-        link_encurtado = encurtar_link(link_produto)
+{titulo_original}
 
-        # Monta anúncio
-        anuncio = criar_anuncio(link_encurtado, titulo_curto, precos)
+{gerar_texto_preco(precos)}
+
+👉 Compre por aqui: {encurtar_link(link_produto)}
+
+⚠️ Corre que acaba rápido!
+
+🌐 Siga nossas redes sociais:
+{LINK_CENTRAL}"""
 
         # Envia com imagem se houver
         if imagem_url and imagem_url.startswith("http"):
@@ -276,7 +218,7 @@ async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
                 text=anuncio
             )
 
-        print(f"✅ Produto enviado: {titulo_curto}")
+        print(f"✅ Produto enviado: {titulo_original}")
 
     except Exception as e:
         print(f"Erro ao enviar produto: {e}")
