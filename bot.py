@@ -182,7 +182,7 @@ async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
         titulo_original = achar(row, "titulo", "title", "name", "produto", "product_name", "nome")
         preco_atual = achar(row, "preco", "sale_price", "valor", "current_price", "preço atual")
         preco_antigo = achar(row, "price", "old_price", "preco_original", "original_price", "preço original")
-        imagem_url = achar(row, "image_link", "锘縤mage_link", "img_urll", "foto", "picture")
+        imagem_url = achar(row, "imagem", "image_link", "img_url", "foto", "picture")
 
         # Monta lista de preços
         precos = []
@@ -192,7 +192,7 @@ async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
             precos.insert(0, formatar_preco(preco_antigo))
 
         # Monta anúncio com bordão fixo
-        anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA!
+        anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
 
 {titulo_original}
 
@@ -223,7 +223,31 @@ async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"Erro ao enviar produto: {e}")
 
+job_envio = None  # variável global para controlar o agendamento
+
+async def stop_csv(update, context: ContextTypes.DEFAULT_TYPE):
+    global job_envio
+    if job_envio:
+        job_envio.schedule_removal()
+        job_envio = None
+        await update.message.reply_text("⏸️ Envio automático pausado.")
+    else:
+        await update.message.reply_text("⚠️ O envio automático já está pausado.")
+
+async def play_csv(update, context: ContextTypes.DEFAULT_TYPE):
+    global job_envio
+    if not job_envio:
+        job_envio = context.job_queue.run_repeating(
+            enviar_produto,
+            interval=60*60*4,  # a cada 4 horas
+            first=0
+        )
+        await update.message.reply_text("▶️ Envio automático retomado.")
+    else:
+        await update.message.reply_text("⚠️ O envio automático já está ativo.")
+
 def main():
+    global job_envio
     application = Application.builder().token(TOKEN).build()
 
     # Comandos
@@ -231,9 +255,11 @@ def main():
     application.add_handler(CommandHandler("comandos", comando_lista))
     application.add_handler(CommandHandler("csv", comando_csv))
     application.add_handler(CommandHandler("status", status))
+    application.add_handler(CommandHandler("stopcsv", stop_csv))
+    application.add_handler(CommandHandler("playcsv", play_csv))
 
-    # Inicia agendamento automático
-    application.job_queue.run_repeating(
+    # Inicia agendamento automático imediatamente
+    job_envio = application.job_queue.run_repeating(
         enviar_produto,
         interval=60*60*4,  # a cada 4 horas
         first=0
