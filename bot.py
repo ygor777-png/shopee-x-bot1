@@ -118,10 +118,15 @@ def processar_csv():
         if df.empty:
             return None
 
-        # Escolhe linha aleatória
-        row = df.sample(n=1).iloc[0].to_dict()
+        # Escolhe linha aleatória e guarda índice antes de converter para dict
+        linha_aleatoria = df.sample(n=1).iloc[0]
+        indice = linha_aleatoria.name
+
+        # Converte para dict
+        row = linha_aleatoria.to_dict()
+
         # Remove essa linha do DataFrame
-        df = df.drop(df[df.index == row.name].index)
+        df = df.drop(indice)
 
         # Se estiver usando local, atualiza o arquivo
         if not CSV_URLS:
@@ -132,7 +137,6 @@ def processar_csv():
     except Exception as e:
         print(f"Erro ao processar CSV: {e}")
         return None
-
 
 async def postar_shopee():
     if not auto_post_shopee:
@@ -153,7 +157,7 @@ async def postar_shopee():
     titulo_original = achar(row, "titulo", "title", "name", "produto", "product_name", "nome")
     preco_atual = achar(row, "preco", "sale_price", "valor", "current_price", "preço atual")
     preco_antigo = achar(row, "price", "old_price", "preco_original", "original_price", "preço original")
-    imagem_url = achar(row, "imagem", "image_link", "img_url", "foto", "picture")
+    imagem_url = achar(row, "imagem", "锘縤mage_link", "img_url", "foto", "picture")
 
     precos = []
     if preco_atual:
