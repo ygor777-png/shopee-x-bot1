@@ -34,6 +34,9 @@ TZ = pytz.timezone("America/Sao_Paulo")
 fila_shopee = []
 fila_ml = []
 
+# Controle de postagem automática Shopee
+auto_post_shopee = True
+
 def achar(row, *possiveis_nomes):
     for nome in possiveis_nomes:
         if nome in row and not pd.isna(row[nome]) and str(row[nome]).strip():
@@ -115,9 +118,10 @@ def processar_csv():
         if df.empty:
             return None
 
-        # Pega o primeiro produto e remove da lista
-        row = df.iloc[0].to_dict()
-        df = df.drop(df.index[0])
+        # Escolhe linha aleatória
+        row = df.sample(n=1).iloc[0].to_dict()
+        # Remove essa linha do DataFrame
+        df = df.drop(df[df.index == row.name].index)
 
         # Se estiver usando local, atualiza o arquivo
         if not CSV_URLS:
@@ -131,6 +135,10 @@ def processar_csv():
 
 
 async def postar_shopee():
+    if not auto_post_shopee:
+        print("⏸️ Postagem automática da Shopee está pausada.")
+        return
+
     hora_atual = datetime.now(TZ).hour
     if hora_atual < 7 or hora_atual >= 23:
         print("⏸️ Fora do horário de postagem automática (Shopee).")
@@ -160,9 +168,12 @@ async def postar_shopee():
 
 import re
 
-# ————————————————
-# 1) Resolver redirecionamentos
-# ————————————————
+def extrair_link_de_mensagem(texto: str) -> str | None:
+    match = re.search(r"https?://\S+", texto)
+    if match:
+        return match.group(0)
+    return None
+
 def resolver_url(link: str) -> str:
     try:
         resp = requests.head(link, allow_redirects=True, timeout=10)
@@ -175,9 +186,6 @@ def resolver_url(link: str) -> str:
         print(f"⚠️ Falha ao resolver URL: {e}")
         return link
 
-# ————————————————
-# 2) Extrair ID por padrões conhecidos
-# ————————————————
 PADROES_ID = [
     r"/item/(ML[A-Z]\d+)",
     r"/p/(ML[A-Z]\d+)",
@@ -200,9 +208,6 @@ def extrair_id_por_regex(url: str) -> str | None:
         pass
     return None
 
-# ————————————————
-# 3) Fallback: busca por termo
-# ————————————————
 def termo_de_busca(url: str) -> str | None:
     try:
         qs = parse_qs(urlparse(url).query)
@@ -234,9 +239,6 @@ def buscar_id_por_termo(termo: str) -> str | None:
         print(f"⚠️ Falha ao buscar por termo: {e}")
     return None
 
-# ————————————————
-# 4) Função principal de extração
-# ————————————————
 def extrair_id_ml(link: str) -> str | None:
     final_url = resolver_url(link)
     item_id = extrair_id_por_regex(final_url)
@@ -252,12 +254,11 @@ def extrair_id_ml(link: str) -> str | None:
         return item_id
     return None
 
-# ————————————————
-# Captura Mercado Livre
-# ————————————————
 async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    link = (update.message.text or "").strip()
-    if not link.startswith("http"):
+    texto = (update.message.text or "").strip()
+    link = extrair_link_de_mensagem(texto)
+    if not link:
+        await update.message.reply_text("⚠️ Nenhum link encontrado na mensagem.")
         return
 
     id_produto = extrair_id_ml(link)
@@ -313,13 +314,8 @@ async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def enviar_shopee(context: ContextTypes.DEFAULT_TYPE):
     try:
-        hora_atual = datetime.now(TZ).hour
-        if hora_atual < 7 or hora_atual >= 23:
-            print("⏸️ Fora do horário de postagem automática (Shopee).")
-            return
-
         if not fila_shopee:
-            print("Nenhum produto Shopee na fila.")
+            print("Nenhum produto Shopee na fila para enviar.")
             return
 
         produto = fila_shopee.pop(0)
@@ -342,13 +338,8 @@ async def enviar_shopee(context: ContextTypes.DEFAULT_TYPE):
 
 async def enviar_ml(context: ContextTypes.DEFAULT_TYPE):
     try:
-        hora_atual = datetime.now(TZ).hour
-        if hora_atual < 7 or hora_atual >= 23:
-            print("⏸️ Fora do horário de postagem automática (Mercado Livre).")
-            return
-
         if not fila_ml:
-            print("Nenhum produto Mercado Livre na fila.")
+            print("Nenhum produto Mercado Livre na fila para enviar.")
             return
 
         produto = fila_ml.pop(0)
@@ -369,9 +360,12 @@ async def enviar_ml(context: ContextTypes.DEFAULT_TYPE):
         print(f"Erro ao enviar Mercado Livre: {e}")
 
 async def ciclo_postagem(context: ContextTypes.DEFAULT_TYPE):
+    # Se houver produto do Mercado Livre na fila, ele tem prioridade
     if fila_ml:
         await enviar_ml(context)
     else:
+        # Shopee sempre puxa do CSV e posta
+        await postar_shopee()
         await enviar_shopee(context)
 
 
@@ -395,47 +389,51 @@ async def comando_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
    • Quantos produtos estão na fila da Shopee.
    • Quantos produtos estão na fila do Mercado Livre.
    • Horário atual.
+   • Se a postagem automática está ligada.
+   • Horário da próxima postagem.
 
 ⏸️ **/stopcsv** — Pausa o envio automático da Shopee.
 
 ▶️ **/playcsv** — Retoma o envio automático da Shopee.
 
 📋 **/comandos** — Mostra esta lista de comandos.
-
-💡 **Como funciona o Mercado Livre**:
-   • Envie o link de afiliado (pode ser encurtado) no grupo de entrada.
-   • O bot busca imagem, preço, parcelas, frete e cupom.
-   • O produto entra na fila e será postado no próximo ciclo de 10 minutos.
-
-⚡ **Ciclo de Postagem**:
-   • A cada 10 minutos, das 07h às 23h.
-   • Se houver produto do Mercado Livre na fila, ele tem prioridade.
-   • Caso contrário, posta Shopee.
 """
     await update.message.reply_text(comandos_texto, parse_mode="Markdown")
 
 # 📂 Força leitura CSV Shopee
 async def comando_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await postar_shopee()
+    await enviar_shopee(context)
     await update.message.reply_text("📂 Produto Shopee postado manualmente.")
 
 # 📊 Status do bot
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    jobs = context.job_queue.get_jobs_by_name("ciclo_postagem")
+    if jobs:
+        proxima_exec = jobs[0].next_t.astimezone(TZ).strftime("%H:%M")
+    else:
+        proxima_exec = "Não agendado"
+
     texto_status = (
         f"📊 **Status do Bot**\n"
         f"🛒 Shopee na fila: {len(fila_shopee)}\n"
         f"📦 Mercado Livre na fila: {len(fila_ml)}\n"
-        f"⏰ Horário atual: {datetime.now(TZ).strftime('%H:%M')}"
+        f"⏰ Horário atual: {datetime.now(TZ).strftime('%H:%M')}\n"
+        f"⚙️ Postagem automática: {'✅ Ligada' if auto_post_shopee else '⏸️ Pausada'}\n"
+        f"🕒 Próxima postagem: {proxima_exec}"
     )
     await update.message.reply_text(texto_status, parse_mode="Markdown")
 
 # ⏸️ Pausa Shopee
 async def stop_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    fila_shopee.clear()
+    global auto_post_shopee
+    auto_post_shopee = False
     await update.message.reply_text("⏸️ Envio automático da Shopee pausado.")
 
 # ▶️ Retoma Shopee
 async def play_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global auto_post_shopee
+    auto_post_shopee = True
     await update.message.reply_text("▶️ Envio automático da Shopee retomado.")
 
 
@@ -458,7 +456,8 @@ def main():
     application.job_queue.run_repeating(
         ciclo_postagem,
         interval=60*10,
-        first=0
+        first=0,
+        name="ciclo_postagem"
     )
 
     print("🤖 Bot iniciado e agendamento configurado.")
