@@ -177,6 +177,12 @@ def processar_csv():
     
 async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
     try:
+        # Verifica se está dentro do horário permitido (07h às 23h)
+        hora_atual = datetime.now(TZ).hour
+        if hora_atual < 7 or hora_atual >= 23:
+            print("⏸️ Fora do horário de postagem automática.")
+            return
+
         row = processar_csv()
         if row is None:
             print("Nenhum produto para enviar.")
@@ -197,7 +203,7 @@ async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
             precos.insert(0, formatar_preco(preco_antigo))
 
         # Monta anúncio com bordão fixo
-        anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA!! ⚡
+        anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
 
 {titulo_original}
 
@@ -227,6 +233,7 @@ async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         print(f"Erro ao enviar produto: {e}")
+
 
 job_envio = None  # variável global para controlar o agendamento
 
