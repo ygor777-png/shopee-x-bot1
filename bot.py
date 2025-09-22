@@ -188,8 +188,7 @@ def resolver_url(link: str) -> str:
             )
         }
         resp = requests.get(link, headers=headers, allow_redirects=True, timeout=15)
-        final_url = resp.url
-        return final_url
+        return resp.url
     except Exception as e:
         print(f"⚠️ Falha ao resolver URL: {e}")
         return link
@@ -214,6 +213,24 @@ def extrair_id_por_regex(url: str) -> str | None:
             return cand.upper()
     except:
         pass
+    return None
+
+def extrair_id_por_html(link: str) -> str | None:
+    try:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/116.0 Safari/537.36"
+            )
+        }
+        resp = requests.get(link, headers=headers, timeout=15)
+        html = resp.text
+        m = re.search(r"MLB\d{6,}", html)
+        if m:
+            return m.group(0)
+    except Exception as e:
+        print(f"⚠️ Falha ao extrair ID do HTML: {e}")
     return None
 
 def termo_de_busca(url: str) -> str | None:
@@ -248,18 +265,29 @@ def buscar_id_por_termo(termo: str) -> str | None:
     return None
 
 def extrair_id_ml(link: str) -> str | None:
+    # 1️⃣ Tenta pelo link final
     final_url = resolver_url(link)
     item_id = extrair_id_por_regex(final_url)
     if item_id:
         return item_id
+
+    # 2️⃣ Tenta pelo HTML do link de afiliado
+    item_id = extrair_id_por_html(link)
+    if item_id:
+        return item_id
+
+    # 3️⃣ Tenta por termo de busca
     termo = termo_de_busca(final_url)
     if termo:
         item_id = buscar_id_por_termo(termo)
         if item_id:
             return item_id
+
+    # 4️⃣ Última tentativa no link original
     item_id = extrair_id_por_regex(link)
     if item_id:
         return item_id
+
     return None
 
 async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -269,17 +297,12 @@ async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Nenhum link encontrado na mensagem.")
         return
 
-    # Resolve para o link final do produto original
-    link_final_produto = resolver_url(link_afiliado)
-
-    # Extrai o ID do produto original
-    id_produto = extrair_id_ml(link_final_produto)
+    id_produto = extrair_id_ml(link_afiliado)
     if not id_produto:
         await update.message.reply_text("⚠️ Não consegui identificar o ID do produto.")
         return
 
     try:
-        # Busca dados do produto na API do Mercado Livre
         r = requests.get(f"https://api.mercadolibre.com/items/{id_produto}", timeout=10)
         if r.status_code != 200:
             await update.message.reply_text("❌ Erro ao buscar produto no Mercado Livre.")
@@ -305,7 +328,6 @@ async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         imagem = dados.get("thumbnail", "")
 
-        # 🔹 Usa o link de afiliado encurtado no post
         link_encurtado = encurtar_link(link_afiliado)
 
         anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
@@ -328,30 +350,6 @@ async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"Erro: {e}")
-
-async def enviar_shopee(context: ContextTypes.DEFAULT_TYPE):
-    try:
-        if not fila_shopee:
-            print("Nenhum produto Shopee na fila para enviar.")
-            return
-
-        produto = fila_shopee.pop(0)
-        if produto["imagem"] and produto["imagem"].startswith("http"):
-            await context.bot.send_photo(
-                chat_id=GRUPO_SAIDA_ID,
-                photo=produto["imagem"],
-                caption=produto["anuncio"]
-            )
-        else:
-            await context.bot.send_message(
-                chat_id=GRUPO_SAIDA_ID,
-                text=produto["anuncio"]
-            )
-        print(f"✅ Shopee enviado: {produto['titulo']}")
-
-    except Exception as e:
-        print(f"Erro ao enviar Shopee: {e}")
-
 
 async def enviar_ml(context: ContextTypes.DEFAULT_TYPE):
     try:
