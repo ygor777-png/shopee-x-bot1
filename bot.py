@@ -260,17 +260,22 @@ def extrair_id_ml(link: str) -> str | None:
 
 async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = (update.message.text or "").strip()
-    link = extrair_link_de_mensagem(texto)
-    if not link:
+    link_afiliado = extrair_link_de_mensagem(texto)
+    if not link_afiliado:
         await update.message.reply_text("⚠️ Nenhum link encontrado na mensagem.")
         return
 
-    id_produto = extrair_id_ml(link)
+    # Resolve para o link final do produto original
+    link_final_produto = resolver_url(link_afiliado)
+
+    # Extrai o ID do produto original
+    id_produto = extrair_id_ml(link_final_produto)
     if not id_produto:
         await update.message.reply_text("⚠️ Não consegui identificar o ID do produto.")
         return
 
     try:
+        # Busca dados do produto na API do Mercado Livre
         r = requests.get(f"https://api.mercadolibre.com/items/{id_produto}", timeout=10)
         if r.status_code != 200:
             await update.message.reply_text("❌ Erro ao buscar produto no Mercado Livre.")
@@ -295,6 +300,10 @@ async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
         frete_info = "🚚 Frete Full" if "fulfillment" in frete_tags else "📦 Frete normal"
 
         imagem = dados.get("thumbnail", "")
+
+        # 🔹 Usa o link de afiliado encurtado no post
+        link_encurtado = encurtar_link(link_afiliado)
+
         anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
 
 {titulo}
@@ -303,7 +312,7 @@ async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💳 {info_parcelas}
 {frete_info}
 
-👉 Compre por aqui: {link}
+👉 Compre por aqui: {link_encurtado}
 
 ⚠️ Corre que acaba rápido!
 
