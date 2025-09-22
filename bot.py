@@ -11,8 +11,8 @@ import requests
 # Configurações
 TOKEN = "SEU_TOKEN_AQUI"
 GRUPO_ENTRADA_ML = -1001234567890  # ID do grupo de entrada Mercado Livre
-GRUPO_SAIDA_ID = -4653176769   # ID do grupo de saída (promoções)
-LINK_CENTRAL = "https://atom.bio/ofertas_express"
+GRUPO_SAIDA_ID = -1009876543210    # ID do grupo de saída (promoções)
+LINK_CENTRAL = "https://seusite.com/redes"
 
 # Timezone Brasil
 TZ = pytz.timezone("America/Sao_Paulo")
@@ -51,7 +51,6 @@ def gerar_texto_preco(precos):
     if not precos:
         return "💰 Preço sob consulta"
 
-    # Se houver dois preços e eles forem iguais, mantém só um
     if len(precos) == 2 and precos[0] == precos[1]:
         precos = [precos[0]]
 
@@ -106,6 +105,11 @@ def processar_csv():
         return None
 
 async def postar_shopee():
+    hora_atual = datetime.now(TZ).hour
+    if hora_atual < 7 or hora_atual >= 23:
+        print("⏸️ Fora do horário de postagem automática (Shopee).")
+        return
+
     row = processar_csv()
     if not row:
         print("Nenhum produto Shopee disponível.")
@@ -125,15 +129,10 @@ async def postar_shopee():
 
     anuncio = criar_anuncio(encurtar_link(link_produto), titulo_original, precos)
 
-    if imagem_url and imagem_url.startswith("http"):
-        await app.bot.send_photo(chat_id=GRUPO_SAIDA_ID, photo=imagem_url, caption=anuncio)
-    else:
-        await app.bot.send_message(chat_id=GRUPO_SAIDA_ID, text=anuncio)
-
-    print(f"✅ Shopee enviado: {titulo_original}")
+    fila_shopee.append({"titulo": titulo_original, "imagem": imagem_url, "anuncio": anuncio})
+    print(f"✅ Produto Shopee adicionado à fila: {titulo_original}")
 
 def extrair_id_ml(link):
-    # Extrai o ID do produto do link do Mercado Livre
     try:
         if "/item/" in link:
             return link.split("/item/")[1].split("?")[0]
@@ -155,7 +154,6 @@ async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Não consegui identificar o ID do produto.")
         return
 
-    # Consulta API Mercado Livre
     try:
         r = requests.get(f"https://api.mercadolibre.com/items/{id_produto}")
         if r.status_code != 200:
@@ -214,11 +212,17 @@ async def enviar_shopee(context: ContextTypes.DEFAULT_TYPE):
             return
 
         produto = fila_shopee.pop(0)
-        await context.bot.send_photo(
-            chat_id=GRUPO_SAIDA_ID,
-            photo=produto["imagem"],
-            caption=produto["anuncio"]
-        )
+        if produto["imagem"] and produto["imagem"].startswith("http"):
+            await context.bot.send_photo(
+                chat_id=GRUPO_SAIDA_ID,
+                photo=produto["imagem"],
+                caption=produto["anuncio"]
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=GRUPO_SAIDA_ID,
+                text=produto["anuncio"]
+            )
         print(f"✅ Shopee enviado: {produto['titulo']}")
 
     except Exception as e:
@@ -261,23 +265,58 @@ async def ciclo_postagem(context: ContextTypes.DEFAULT_TYPE):
         await enviar_shopee(context)
 
 
+async def comando_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    comandos_texto = """
+📋 **Lista de Comandos do Bot**
+
+🚀 **/start** — Dá as boas-vindas e explica como o bot funciona.
+
+📂 **/csv** — Força leitura imediata do CSV da Shopee e posta o próximo produto.
+
+📊 **/status** — Mostra o status atual do bot:
+   • Quantos produtos estão na fila da Shopee.
+   • Quantos produtos estão na fila do Mercado Livre.
+   • Horário atual.
+
+⏸️ **/stopcsv** — Pausa o envio automático da Shopee.
+
+▶️ **/playcsv** — Retoma o envio automático da Shopee.
+
+📋 **/comandos** — Mostra esta lista de comandos.
+
+💡 **Como funciona o Mercado Livre**:
+   • Envie o link de afiliado (pode ser encurtado) no grupo de entrada.
+   • O bot busca imagem, preço, parcelas, frete e cupom.
+   • O produto entra na fila e será postado no próximo ciclo de 10 minutos.
+
+⚡ **Ciclo de Postagem**:
+   • A cada 10 minutos, das 07h às 23h.
+   • Se houver produto do Mercado Livre na fila, ele tem prioridade.
+   • Caso contrário, posta Shopee.
+"""
+    await update.message.reply_text(comandos_texto, parse_mode="Markdown")
+
+
 def main():
     application = Application.builder().token(TOKEN).build()
 
-    # Handlers
-    application.add_handler(CommandHandler("start", start))
+    # 🎯 COMANDOS PRINCIPAIS
+    application.add_handler(CommandHandler("start", start))       # 🚀 Boas-vindas
+    application.add_handler(CommandHandler("comandos", comando_lista))  # 📋 Lista de comandos
+    application.add_handler(CommandHandler("csv", comando_csv))   # 📂 Força leitura CSV Shopee
+    application.add_handler(CommandHandler("status", status))     # 📊 Status do bot
+    application.add_handler(CommandHandler("stopcsv", stop_csv))  # ⏸️ Pausa Shopee
+    application.add_handler(CommandHandler("playcsv", play_csv))  # ▶️ Retoma Shopee
+
+    # 📦 Captura manual Mercado Livre
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, capturar_ml))
 
-    # Agendamento único a cada 10 minutos
+    # ⏱️ Agendamento único a cada 10 minutos
     application.job_queue.run_repeating(
         ciclo_postagem,
-        interval=60*10,  # a cada 10 minutos
+        interval=60*10,
         first=0
     )
 
     print("🤖 Bot iniciado e agendamento configurado.")
     application.run_polling()
-
-
-if __name__ == "__main__":
-    main()
