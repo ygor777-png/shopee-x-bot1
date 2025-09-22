@@ -10,9 +10,9 @@ import requests
 
 # Configurações
 TOKEN = "SEU_TOKEN_AQUI"
-GRUPO_ENTRADA_ML = -1001234567890  # ID do grupo de entrada Mercado Livre
-GRUPO_SAIDA_ID = -1009876543210    # ID do grupo de saída (promoções)
-LINK_CENTRAL = "https://seusite.com/redes"
+GRUPO_ENTRADA_ML = -4653176769  # ID do grupo de entrada Mercado Livre
+GRUPO_SAIDA_ID = -1001592474533   # ID do grupo de saída (promoções)
+LINK_CENTRAL = "https://atom.bio/ofertas_express"
 
 # Timezone Brasil
 TZ = pytz.timezone("America/Sao_Paulo")
