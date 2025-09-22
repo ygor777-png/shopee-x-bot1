@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import random
 import re
@@ -8,10 +9,21 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import pytz
 import requests
 
+# =========================
 # Configurações
-TOKEN = "8183137844:AAHl9P-oW8nDiJO7o0sqm6ocpOrcTo_yONY"
+# =========================
+
+# 🔹 Token do bot via variável de ambiente (Railway)
+TOKEN = os.getenv("BOT_TOKEN")  # Configure BOT_TOKEN no Railway
+
+# 🔹 URL do CSV online (opcional)
+CSV_URLS = os.getenv("CSV_URLS")  # Configure CSV_URLS no Railway se quiser buscar online
+
+# IDs dos grupos
 GRUPO_ENTRADA_ML = -4653176769  # ID do grupo de entrada Mercado Livre
 GRUPO_SAIDA_ID = -1001592474533    # ID do grupo de saída (promoções)
+
+# Link central de redes sociais
 LINK_CENTRAL = "https://atom.bio/ofertas_express"
 
 # Timezone Brasil
@@ -92,17 +104,30 @@ def criar_anuncio(link, titulo, precos):
 
 def processar_csv():
     try:
-        df = pd.read_csv("produtos.csv")
+        if CSV_URLS:
+            print(f"📡 Lendo CSV da URL: {CSV_URLS}")
+            df = pd.read_csv(CSV_URLS)
+        else:
+            print("📂 Lendo CSV local: produtos.csv")
+            df = pd.read_csv("produtos.csv")
+
         if df.empty:
             return None
+
         # Pega o primeiro produto e remove da lista
         row = df.iloc[0].to_dict()
         df = df.drop(df.index[0])
-        df.to_csv("produtos.csv", index=False)
+
+        # Se estiver usando local, atualiza o arquivo
+        if not CSV_URLS:
+            df.to_csv("produtos.csv", index=False)
+
         return row
+
     except Exception as e:
         print(f"Erro ao processar CSV: {e}")
         return None
+
 
 async def postar_shopee():
     hora_atual = datetime.now(TZ).hour
@@ -143,6 +168,7 @@ def extrair_id_ml(link):
     except:
         return None
     return None
+
 
 async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != GRUPO_ENTRADA_ML:
