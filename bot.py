@@ -264,6 +264,12 @@ async def ciclo_postagem(context: ContextTypes.DEFAULT_TYPE):
     else:
         await enviar_shopee(context)
 
+# 🚀 Boas-vindas
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🚀 Olá! Seja bem-vindo ao bot.\n"
+        "Use /comandos para ver tudo o que posso fazer."
+    )
 
 # Função /comandos
 async def comando_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
