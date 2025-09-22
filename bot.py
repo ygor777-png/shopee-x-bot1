@@ -180,11 +180,15 @@ def extrair_link_de_mensagem(texto: str) -> str | None:
 
 def resolver_url(link: str) -> str:
     try:
-        resp = requests.head(link, allow_redirects=True, timeout=10)
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/116.0 Safari/537.36"
+            )
+        }
+        resp = requests.get(link, headers=headers, allow_redirects=True, timeout=15)
         final_url = resp.url
-        if final_url == link:
-            resp_get = requests.get(link, allow_redirects=True, timeout=10)
-            final_url = resp_get.url
         return final_url
     except Exception as e:
         print(f"⚠️ Falha ao resolver URL: {e}")
