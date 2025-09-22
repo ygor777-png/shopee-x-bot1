@@ -9,7 +9,7 @@ import pytz
 import requests
 
 # Configurações
-TOKEN = "SEU_TOKEN_AQUI"
+TOKEN = "8183137844:AAHl9P-oW8nDiJO7o0sqm6ocpOrcTo_yONY"
 GRUPO_ENTRADA_ML = -4653176769  # ID do grupo de entrada Mercado Livre
 GRUPO_SAIDA_ID = -1001592474533    # ID do grupo de saída (promoções)
 LINK_CENTRAL = "https://atom.bio/ofertas_express"
