@@ -303,23 +303,33 @@ async def comando_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TOKEN).build()
 
-    # 🎯 COMANDOS PRINCIPAIS
-    application.add_handler(CommandHandler("start", start))       # 🚀 Boas-vindas
+    # ✅ 1. REGISTRO DE COMANDOS
+    # Cada comando está registrado com um comentário explicando sua função
+    application.add_handler(CommandHandler("start", start))        # 🚀 Boas-vindas
     application.add_handler(CommandHandler("comandos", comando_lista))  # 📋 Lista de comandos
-    application.add_handler(CommandHandler("csv", comando_csv))   # 📂 Força leitura CSV Shopee
-    application.add_handler(CommandHandler("status", status))     # 📊 Status do bot
-    application.add_handler(CommandHandler("stopcsv", stop_csv))  # ⏸️ Pausa Shopee
-    application.add_handler(CommandHandler("playcsv", play_csv))  # ▶️ Retoma Shopee
+    application.add_handler(CommandHandler("csv", comando_csv))    # 📂 Força leitura CSV Shopee
+    application.add_handler(CommandHandler("status", status))      # 📊 Status do bot
+    application.add_handler(CommandHandler("stopcsv", stop_csv))   # ⏸️ Pausa Shopee
+    application.add_handler(CommandHandler("playcsv", play_csv))   # ▶️ Retoma Shopee
 
-    # 📦 Captura manual Mercado Livre
+    # ✅ 2. CAPTURA MANUAL MERCADO LIVRE
+    # Recebe links no grupo de entrada e adiciona à fila ML
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, capturar_ml))
 
-    # ⏱️ Agendamento único a cada 10 minutos
+    # ✅ 3. AGENDAMENTO ÚNICO
+    # Roda a cada 10 minutos, das 07h às 23h, alternando Shopee e ML
     application.job_queue.run_repeating(
         ciclo_postagem,
-        interval=60*10,
+        interval=60*10,  # 10 minutos
         first=0
     )
 
+    # ✅ 4. INICIALIZAÇÃO
     print("🤖 Bot iniciado e agendamento configurado.")
     application.run_polling()
+
+
+# ✅ 5. EXECUÇÃO
+# Garante que o bot só inicia se o arquivo for executado diretamente
+if __name__ == "__main__":
+    main()
