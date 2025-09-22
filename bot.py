@@ -234,7 +234,6 @@ async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"Erro ao enviar produto: {e}")
 
-
 job_envio = None  # variável global para controlar o agendamento
 
 async def stop_csv(update, context: ContextTypes.DEFAULT_TYPE):
@@ -251,7 +250,7 @@ async def play_csv(update, context: ContextTypes.DEFAULT_TYPE):
     if not job_envio:
         job_envio = context.job_queue.run_repeating(
             enviar_produto,
-            interval=60*20,  # a cada 20 minutos
+            interval=60*10,  # a cada 10 minutos
             first=0
         )
         await update.message.reply_text("▶️ Envio automático retomado.")
@@ -273,7 +272,7 @@ def main():
     # Inicia agendamento automático imediatamente
     job_envio = application.job_queue.run_repeating(
         enviar_produto,
-        interval=60*20,  # a cada 20 minutos
+        interval=60*10,  # a cada 10 minutos
         first=0
     )
 
@@ -282,4 +281,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
