@@ -265,6 +265,7 @@ async def ciclo_postagem(context: ContextTypes.DEFAULT_TYPE):
         await enviar_shopee(context)
 
 
+# Função /comandos
 async def comando_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     comandos_texto = """
 📋 **Lista de Comandos do Bot**
@@ -294,9 +295,11 @@ async def comando_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
    • Se houver produto do Mercado Livre na fila, ele tem prioridade.
    • Caso contrário, posta Shopee.
 """
+    # Envia a mensagem sem risco de erro de formatação
     await update.message.reply_text(comandos_texto, parse_mode="Markdown")
 
 
+# Função principal
 def main():
     application = Application.builder().token(TOKEN).build()
 
