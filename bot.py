@@ -157,7 +157,7 @@ async def postar_shopee():
     titulo_original = achar(row, "titulo", "title", "name", "produto", "product_name", "nome")
     preco_atual = achar(row, "preco", "sale_price", "valor", "current_price", "preço atual")
     preco_antigo = achar(row, "price", "old_price", "preco_original", "original_price", "preço original")
-    imagem_url = achar(row, "imagem", "锘縤mage_link", "img_url", "foto", "picture")
+    imagem_url = achar(row, "imagem", "image_link", "img_url", "foto", "picture")
 
     precos = []
     if preco_atual:
