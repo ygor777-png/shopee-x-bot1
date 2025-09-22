@@ -11,7 +11,7 @@ import requests
 # Configurações
 TOKEN = "SEU_TOKEN_AQUI"
 GRUPO_ENTRADA_ML = -4653176769  # ID do grupo de entrada Mercado Livre
-GRUPO_SAIDA_ID = -1001592474533   # ID do grupo de saída (promoções)
+GRUPO_SAIDA_ID = -1001592474533    # ID do grupo de saída (promoções)
 LINK_CENTRAL = "https://atom.bio/ofertas_express"
 
 # Timezone Brasil
@@ -264,6 +264,7 @@ async def ciclo_postagem(context: ContextTypes.DEFAULT_TYPE):
     else:
         await enviar_shopee(context)
 
+
 # 🚀 Boas-vindas
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -271,7 +272,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Use /comandos para ver tudo o que posso fazer."
     )
 
-# Função /comandos
+# 📋 Lista de comandos
 async def comando_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
     comandos_texto = """
 📋 **Lista de Comandos do Bot**
@@ -301,41 +302,58 @@ async def comando_lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
    • Se houver produto do Mercado Livre na fila, ele tem prioridade.
    • Caso contrário, posta Shopee.
 """
-    # Envia a mensagem sem risco de erro de formatação
     await update.message.reply_text(comandos_texto, parse_mode="Markdown")
+
+# 📂 Força leitura CSV Shopee
+async def comando_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await postar_shopee()
+    await update.message.reply_text("📂 Produto Shopee postado manualmente.")
+
+# 📊 Status do bot
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    texto_status = (
+        f"📊 **Status do Bot**\n"
+        f"🛒 Shopee na fila: {len(fila_shopee)}\n"
+        f"📦 Mercado Livre na fila: {len(fila_ml)}\n"
+        f"⏰ Horário atual: {datetime.now(TZ).strftime('%H:%M')}"
+    )
+    await update.message.reply_text(texto_status, parse_mode="Markdown")
+
+# ⏸️ Pausa Shopee
+async def stop_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    fila_shopee.clear()
+    await update.message.reply_text("⏸️ Envio automático da Shopee pausado.")
+
+# ▶️ Retoma Shopee
+async def play_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("▶️ Envio automático da Shopee retomado.")
 
 
 # Função principal
 def main():
     application = Application.builder().token(TOKEN).build()
 
-    # ✅ 1. REGISTRO DE COMANDOS
-    # Cada comando está registrado com um comentário explicando sua função
-    application.add_handler(CommandHandler("start", start))        # 🚀 Boas-vindas
-    application.add_handler(CommandHandler("comandos", comando_lista))  # 📋 Lista de comandos
-    application.add_handler(CommandHandler("csv", comando_csv))    # 📂 Força leitura CSV Shopee
-    application.add_handler(CommandHandler("status", status))      # 📊 Status do bot
-    application.add_handler(CommandHandler("stopcsv", stop_csv))   # ⏸️ Pausa Shopee
-    application.add_handler(CommandHandler("playcsv", play_csv))   # ▶️ Retoma Shopee
+    # 🎯 COMANDOS PRINCIPAIS
+    application.add_handler(CommandHandler("start", start))       
+    application.add_handler(CommandHandler("comandos", comando_lista))  
+    application.add_handler(CommandHandler("csv", comando_csv))   
+    application.add_handler(CommandHandler("status", status))     
+    application.add_handler(CommandHandler("stopcsv", stop_csv))  
+    application.add_handler(CommandHandler("playcsv", play_csv))  
 
-    # ✅ 2. CAPTURA MANUAL MERCADO LIVRE
-    # Recebe links no grupo de entrada e adiciona à fila ML
+    # 📦 Captura manual Mercado Livre
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, capturar_ml))
 
-    # ✅ 3. AGENDAMENTO ÚNICO
-    # Roda a cada 10 minutos, das 07h às 23h, alternando Shopee e ML
+    # ⏱️ Agendamento único a cada 10 minutos
     application.job_queue.run_repeating(
         ciclo_postagem,
-        interval=60*10,  # 10 minutos
+        interval=60*10,
         first=0
     )
 
-    # ✅ 4. INICIALIZAÇÃO
     print("🤖 Bot iniciado e agendamento configurado.")
     application.run_polling()
 
 
-# ✅ 5. EXECUÇÃO
-# Garante que o bot só inicia se o arquivo for executado diretamente
 if __name__ == "__main__":
     main()
