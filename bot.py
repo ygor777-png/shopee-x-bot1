@@ -80,7 +80,7 @@ def gerar_texto_preco(precos):
 
 def criar_anuncio(link, titulo, precos):
     texto_preco = gerar_texto_preco(precos)
-    return f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
+    return f"""⚡ EXPRESS ACHOU, CONFIRA!! ⚡
 
 {titulo}
 
@@ -197,7 +197,7 @@ async def enviar_produto(context: ContextTypes.DEFAULT_TYPE):
             precos.insert(0, formatar_preco(preco_antigo))
 
         # Monta anúncio com bordão fixo
-        anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
+        anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA!! ⚡
 
 {titulo_original}
 
