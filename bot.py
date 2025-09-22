@@ -8,6 +8,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import pytz
 import requests
+from urllib.parse import urlparse, parse_qs
 
 # =========================
 # Configurações
@@ -157,31 +158,115 @@ async def postar_shopee():
     fila_shopee.append({"titulo": titulo_original, "imagem": imagem_url, "anuncio": anuncio})
     print(f"✅ Produto Shopee adicionado à fila: {titulo_original}")
 
-def extrair_id_ml(link):
+import re
+
+# ————————————————
+# 1) Resolver redirecionamentos
+# ————————————————
+def resolver_url(link: str) -> str:
     try:
-        if "/item/" in link:
-            return link.split("/item/")[1].split("?")[0]
-        elif "/p/" in link:
-            return link.split("/p/")[1].split("?")[0]
-        elif "/social/" in link:
-            return link.split("/social/")[1].split("?")[0]
+        resp = requests.head(link, allow_redirects=True, timeout=10)
+        final_url = resp.url
+        if final_url == link:
+            resp_get = requests.get(link, allow_redirects=True, timeout=10)
+            final_url = resp_get.url
+        return final_url
+    except Exception as e:
+        print(f"⚠️ Falha ao resolver URL: {e}")
+        return link
+
+# ————————————————
+# 2) Extrair ID por padrões conhecidos
+# ————————————————
+PADROES_ID = [
+    r"/item/(ML[A-Z]\d+)",
+    r"/p/(ML[A-Z]\d+)",
+    r"/(ML[A-Z])[-_]?(\d+)",
+]
+
+def extrair_id_por_regex(url: str) -> str | None:
+    for padrao in PADROES_ID:
+        m = re.search(padrao, url, flags=re.IGNORECASE)
+        if m:
+            if len(m.groups()) == 2:
+                return f"{m.group(1).upper()}{m.group(2)}"
+            return m.group(1).upper()
+    try:
+        qs = parse_qs(urlparse(url).query)
+        cand = qs.get("item_id", [None])[0]
+        if cand and re.match(r"ML[A-Z]\d+", cand, flags=re.IGNORECASE):
+            return cand.upper()
     except:
-        return None
+        pass
     return None
 
+# ————————————————
+# 3) Fallback: busca por termo
+# ————————————————
+def termo_de_busca(url: str) -> str | None:
+    try:
+        qs = parse_qs(urlparse(url).query)
+        for k in ["matt_word", "q", "query", "keyword"]:
+            if k in qs and qs[k]:
+                return qs[k][0].strip()
+        path = urlparse(url).path
+        segs = [s for s in path.split("/") if s]
+        if "social" in segs:
+            idx = segs.index("social")
+            if idx + 1 < len(segs):
+                return segs[idx + 1].strip()
+    except:
+        pass
+    return None
 
+def buscar_id_por_termo(termo: str) -> str | None:
+    try:
+        url_busca = f"https://api.mercadolibre.com/sites/MLB/search?q={requests.utils.quote(termo)}"
+        r = requests.get(url_busca, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            results = data.get("results", [])
+            for item in results:
+                item_id = item.get("id")
+                if item_id and re.match(r"ML[A-Z]\d+", item_id, flags=re.IGNORECASE):
+                    return item_id.upper()
+    except Exception as e:
+        print(f"⚠️ Falha ao buscar por termo: {e}")
+    return None
+
+# ————————————————
+# 4) Função principal de extração
+# ————————————————
+def extrair_id_ml(link: str) -> str | None:
+    final_url = resolver_url(link)
+    item_id = extrair_id_por_regex(final_url)
+    if item_id:
+        return item_id
+    termo = termo_de_busca(final_url)
+    if termo:
+        item_id = buscar_id_por_termo(termo)
+        if item_id:
+            return item_id
+    item_id = extrair_id_por_regex(link)
+    if item_id:
+        return item_id
+    return None
+
+# ————————————————
+# Captura Mercado Livre
+# ————————————————
 async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.id != GRUPO_ENTRADA_ML:
+    link = (update.message.text or "").strip()
+    if not link.startswith("http"):
         return
 
-    link = update.message.text.strip()
     id_produto = extrair_id_ml(link)
     if not id_produto:
         await update.message.reply_text("⚠️ Não consegui identificar o ID do produto.")
         return
 
     try:
-        r = requests.get(f"https://api.mercadolibre.com/items/{id_produto}")
+        r = requests.get(f"https://api.mercadolibre.com/items/{id_produto}", timeout=10)
         if r.status_code != 200:
             await update.message.reply_text("❌ Erro ao buscar produto no Mercado Livre.")
             return
@@ -284,7 +369,6 @@ async def enviar_ml(context: ContextTypes.DEFAULT_TYPE):
         print(f"Erro ao enviar Mercado Livre: {e}")
 
 async def ciclo_postagem(context: ContextTypes.DEFAULT_TYPE):
-    # Se houver produto do Mercado Livre na fila, ele tem prioridade
     if fila_ml:
         await enviar_ml(context)
     else:
