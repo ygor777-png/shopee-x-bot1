@@ -69,8 +69,8 @@ def postar_shopee():
         row = df.sample(n=1).iloc[0]
 
         titulo = achar(row, "titulo", "title", "name", "produto", "product_name", "nome")
-        preco1 = achar(row, "preco", "sale_price", "valor", "current_price", "preço atual")
-        preco2 = achar(row, "price", "old_price", "preco_original", "original_price", "preço original")
+        preco1 = achar(row, "price", "old_price", "preco_original", "original_price", "preço original")
+        preco2 = achar(row, "preco", "sale_price", "valor", "current_price", "preço atual")
         link = achar(row, "link", "url", "product_link", "produto_url", "url do produto")
 
         if not titulo or not link:
