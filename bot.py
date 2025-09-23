@@ -1,103 +1,63 @@
 import os
-import pandas as pd
-import random
 import re
-import pyshorteners
-from datetime import datetime
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import pytz
 import requests
+import pandas as pd
+from datetime import datetime
+from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-# =========================
-# Configurações
-# =========================
+# 🔹 Configurações
+TOKEN = os.getenv("BOT_TOKEN")  # Token do bot
+GRUPO_SAIDA_ID = int(os.getenv("GRUPO_SAIDA_ID", "-1001592474533"))  # ID do grupo de saída
+CSV_URLS = os.getenv("CSV_URLS", "")  # URL do CSV da Shopee (opcional)
+LINK_CENTRAL = os.getenv("LINK_CENTRAL", "https://atom.bio/ofertas_express")  # Link central
 
-# 🔹 Token do bot via variável de ambiente (Railway)
-TOKEN = os.getenv("BOT_TOKEN")  # Configure BOT_TOKEN no Railway
-
-# 🔹 URL do CSV online (opcional)
-CSV_URLS = os.getenv("CSV_URLS")  # Configure CSV_URLS no Railway se quiser buscar online
-
-# IDs dos grupos
-GRUPO_ENTRADA_ML = -4653176769  # ID do grupo de entrada Mercado Livre
-GRUPO_SAIDA_ID = -1001592474533    # ID do grupo de saída (promoções)
-
-# Link central de redes sociais
-LINK_CENTRAL = "https://atom.bio/ofertas_express"
-
-# Timezone Brasil
-TZ = pytz.timezone("America/Sao_Paulo")
-
-# Filas de postagem
+# 🔹 Fila de produtos
 fila_shopee = []
 fila_ml = []
 
-# Controle de postagem automática Shopee
+# 🔹 Controle de postagem automática
 auto_post_shopee = True
 
-def achar(row, *possiveis_nomes):
-    for nome in possiveis_nomes:
-        if nome in row and not pd.isna(row[nome]) and str(row[nome]).strip():
-            return str(row[nome]).strip()
-    return ""
+# 🔹 Fuso horário
+import pytz
+TZ = pytz.timezone("America/Sao_Paulo")
 
-def encurtar_link(link):
-    try:
-        from urllib.parse import urlparse
-        if not link or not urlparse(link).scheme.startswith("http"):
-            print(f"⚠️ Link inválido, não será encurtado: {link}")
-            return link
-        s = pyshorteners.Shortener()
-        return s.tinyurl.short(link)
-    except Exception as e:
-        print(f"Erro ao encurtar link: {e}")
-        return link
+def achar(row, *keys):
+    """Procura o primeiro campo existente na linha do CSV."""
+    for key in keys:
+        if key in row and pd.notna(row[key]):
+            return str(row[key]).strip()
+    return None
 
 def formatar_preco(valor):
+    """Formata preço para R$X,XX."""
     try:
-        valor = re.sub(r'[^\d,\.]', '', str(valor))
-        valor_float = float(valor.replace(',', '.'))
-        return f"R$ {valor_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        valor = str(valor).replace(",", ".")
+        return f"R${float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except:
-        return str(valor)
+        return valor
 
-def gerar_texto_preco(precos):
-    if not precos:
-        return "💰 Preço sob consulta"
-
-    if len(precos) == 2 and precos[0] == precos[1]:
-        precos = [precos[0]]
-
-    if len(precos) == 1:
-        preco = precos[0]
-        modelos_unico = [
-            f"💰 Por: {preco}",
-            f"🔥 Apenas {preco}!",
-            f"🎯 Leve já por {preco}!",
-            f"⚡ Oferta: {preco}",
-            f"✅ Agora por {preco}"
-        ]
-        return random.choice(modelos_unico)
-    else:
-        preco_antigo, preco_atual = precos
-        modelos = [
-            f"💰 De: {preco_antigo}\n✅ Por: {preco_atual}",
-            f"💸 Antes {preco_antigo}, agora só {preco_atual}!",
-            f"🔥 De {preco_antigo} caiu para {preco_atual}!",
-            f"🎉 De {preco_antigo} por apenas {preco_atual}!",
-            f"➡️ Aproveite: {preco_antigo} → {preco_atual}"
-        ]
-        return random.choice(modelos)
+def encurtar_link(link):
+    """Encurta link usando TinyURL."""
+    try:
+        r = requests.get(f"http://tinyurl.com/api-create.php?url={link}", timeout=10)
+        if r.status_code == 200:
+            return r.text
+    except:
+        pass
+    return link
 
 def criar_anuncio(link, titulo, precos):
-    texto_preco = gerar_texto_preco(precos)
+    """Cria texto do anúncio Shopee."""
+    precos_txt = " ➡ ".join(precos) if precos else ""
     return f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
 
 {titulo}
 
-{texto_preco}
+💰 {precos_txt}
 
 👉 Compre por aqui: {link}
 
@@ -106,70 +66,86 @@ def criar_anuncio(link, titulo, precos):
 🌐 Siga nossas redes sociais:
 {LINK_CENTRAL}"""
 
-def processar_csv():
+def postar_shopee():
+    """Lê o CSV da Shopee e adiciona o próximo produto à fila."""
     try:
-        if CSV_URLS:
-            print(f"📡 Lendo CSV da URL: {CSV_URLS}")
-            df = pd.read_csv(CSV_URLS)
-        else:
-            print("📂 Lendo CSV local: produtos.csv")
-            df = pd.read_csv("produtos.csv")
-
-        if df.empty:
-            return None
-
-        # Escolhe linha aleatória e guarda índice antes de converter para dict
-        linha_aleatoria = df.sample(n=1).iloc[0]
-        indice = linha_aleatoria.name
-
-        # Converte para dict
-        row = linha_aleatoria.to_dict()
-
-        # Remove essa linha do DataFrame
-        df = df.drop(indice)
-
-        # Se estiver usando local, atualiza o arquivo
         if not CSV_URLS:
-            df.to_csv("produtos.csv", index=False)
+            print("⚠️ Nenhuma URL de CSV configurada.")
+            return
 
-        return row
+        print(f"Lendo CSV da URL: {CSV_URLS}")
+        df = pd.read_csv(CSV_URLS)
+
+        for _, row in df.iterrows():
+            titulo = achar(row, "Product Name", "Título", "title")
+            preco1 = achar(row, "price", "old_price", "preco_original", "original_price", "preço original")
+            preco2 = achar(row, "preco", "sale_price", "valor", "current_price", "preço atual")
+            link = achar(row, "link", "url", "product_link", "produto_url", "url do produto")
+
+            if not titulo or not link:
+                continue
+
+            link_encurtado = encurtar_link(link)
+            precos = []
+            if preco1:
+                precos.append(formatar_preco(preco1))
+            if preco2 and preco2 != preco1:
+                precos.append(formatar_preco(preco2))
+
+            anuncio = criar_anuncio(link_encurtado, titulo, precos)
+            imagem = achar(row, "imagem", "image_link", "img_url", "foto", "picture")
+
+            fila_shopee.append({
+                "titulo": titulo,
+                "imagem": imagem,
+                "anuncio": anuncio
+            })
+            print(f"✅ Produto Shopee adicionado à fila: {titulo}")
+            break  # adiciona apenas o primeiro produto novo
 
     except Exception as e:
-        print(f"Erro ao processar CSV: {e}")
-        return None
+        print(f"Erro ao ler CSV da Shopee: {e}")
 
-async def postar_shopee():
-    if not auto_post_shopee:
-        print("⏸️ Postagem automática da Shopee está pausada.")
-        return
+def postar_shopee():
+    """Lê o CSV da Shopee e adiciona o próximo produto à fila."""
+    try:
+        if not CSV_URLS:
+            print("⚠️ Nenhuma URL de CSV configurada.")
+            return
 
-    hora_atual = datetime.now(TZ).hour
-    if hora_atual < 7 or hora_atual >= 23:
-        print("⏸️ Fora do horário de postagem automática (Shopee).")
-        return
+        print(f"Lendo CSV da URL: {CSV_URLS}")
+        df = pd.read_csv(CSV_URLS)
 
-    row = processar_csv()
-    if not row:
-        print("Nenhum produto Shopee disponível.")
-        return
+        for _, row in df.iterrows():
+            titulo = achar(row, "Product Name", "Título", "title")
+            preco1 = achar(row, "Price", "Preço", "price")
+            preco2 = achar(row, "Discount Price", "Preço com desconto", "discount_price")
+            link = achar(row, "Link", "URL", "link")
 
-    link_produto = achar(row, "link", "url", "product_link", "produto_url", "url do produto")
-    titulo_original = achar(row, "titulo", "title", "name", "produto", "product_name", "nome")
-    preco_atual = achar(row, "preco", "sale_price", "valor", "current_price", "preço atual")
-    preco_antigo = achar(row, "price", "old_price", "preco_original", "original_price", "preço original")
-    imagem_url = achar(row, "imagem", "image_link", "img_url", "foto", "picture")
+            if not titulo or not link:
+                continue
 
-    precos = []
-    if preco_atual:
-        precos.append(formatar_preco(preco_atual))
-    if preco_antigo:
-        precos.insert(0, formatar_preco(preco_antigo))
+            link_encurtado = encurtar_link(link)
+            precos = []
+            if preco1:
+                precos.append(formatar_preco(preco1))
+            if preco2 and preco2 != preco1:
+                precos.append(formatar_preco(preco2))
 
-    anuncio = criar_anuncio(encurtar_link(link_produto), titulo_original, precos)
+            anuncio = criar_anuncio(link_encurtado, titulo, precos)
+            imagem = achar(row, "Image", "Imagem", "image")
 
-    fila_shopee.append({"titulo": titulo_original, "imagem": imagem_url, "anuncio": anuncio})
-    print(f"✅ Produto Shopee adicionado à fila: {titulo_original}")
-    
+            fila_shopee.append({
+                "titulo": titulo,
+                "imagem": imagem,
+                "anuncio": anuncio
+            })
+            print(f"✅ Produto Shopee adicionado à fila: {titulo}")
+            break  # adiciona apenas o primeiro produto novo
+
+    except Exception as e:
+        print(f"Erro ao ler CSV da Shopee: {e}")
+
 import re
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs
@@ -182,13 +158,7 @@ def extrair_link_de_mensagem(texto: str) -> str | None:
 
 def resolver_url(link: str) -> str:
     try:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/116.0 Safari/537.36"
-            )
-        }
+        headers = {"User-Agent": "Mozilla/5.0"}
         resp = requests.get(link, headers=headers, allow_redirects=True, timeout=15)
         return resp.url
     except Exception as e:
@@ -281,7 +251,6 @@ def extrair_id_ml(link: str) -> str | None:
     return None
 
 def extrair_dados_html(link_produto: str) -> dict:
-    """Faz scraping da página do produto e retorna título, preço e imagem."""
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         resp = requests.get(link_produto, headers=headers, timeout=15)
@@ -296,11 +265,7 @@ def extrair_dados_html(link_produto: str) -> dict:
         imagem_tag = soup.find("img", {"class": re.compile(r"ui-pdp-image")})
         imagem = imagem_tag["src"] if imagem_tag and "src" in imagem_tag.attrs else ""
 
-        return {
-            "titulo": titulo,
-            "preco": preco,
-            "imagem": imagem
-        }
+        return {"titulo": titulo, "preco": preco, "imagem": imagem}
     except Exception as e:
         print(f"⚠️ Falha ao extrair dados HTML: {e}")
         return {"titulo": "", "preco": "", "imagem": ""}
@@ -317,7 +282,6 @@ async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Não consegui identificar o ID do produto.")
         return
 
-    # Monta link direto do produto para scraping
     link_produto = f"https://produto.mercadolivre.com.br/{id_produto}"
     dados = extrair_dados_html(link_produto)
 
@@ -344,9 +308,6 @@ async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
     fila_ml.append({"titulo": titulo, "imagem": imagem, "anuncio": anuncio})
     await update.message.reply_text("✅ Produto do Mercado Livre adicionado à fila.")
 
-    except Exception as e:
-        await update.message.reply_text(f"Erro: {e}")
-
 async def enviar_shopee(context: ContextTypes.DEFAULT_TYPE):
     try:
         if not fila_shopee:
@@ -369,6 +330,7 @@ async def enviar_shopee(context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         print(f"Erro ao enviar Shopee: {e}")
+
 
 async def enviar_ml(context: ContextTypes.DEFAULT_TYPE):
     try:
