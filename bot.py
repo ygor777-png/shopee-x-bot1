@@ -359,6 +359,29 @@ async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Erro: {e}")
 
+async def enviar_shopee(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if not fila_shopee:
+            print("Nenhum produto Shopee na fila para enviar.")
+            return
+
+        produto = fila_shopee.pop(0)
+        if produto["imagem"] and produto["imagem"].startswith("http"):
+            await context.bot.send_photo(
+                chat_id=GRUPO_SAIDA_ID,
+                photo=produto["imagem"],
+                caption=produto["anuncio"]
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=GRUPO_SAIDA_ID,
+                text=produto["anuncio"]
+            )
+        print(f"✅ Shopee enviado: {produto['titulo']}")
+
+    except Exception as e:
+        print(f"Erro ao enviar Shopee: {e}")
+
 async def enviar_ml(context: ContextTypes.DEFAULT_TYPE):
     try:
         if not fila_ml:
