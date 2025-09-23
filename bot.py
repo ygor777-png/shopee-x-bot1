@@ -172,6 +172,7 @@ async def postar_shopee():
     
 import re
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse, parse_qs
 
 def extrair_link_de_mensagem(texto: str) -> str | None:
     match = re.search(r"https?://\S+", texto)
@@ -280,14 +281,14 @@ def extrair_id_ml(link: str) -> str | None:
     return None
 
 def extrair_dados_html(link_produto: str) -> dict:
-    """Faz scraping da página do produto e retorna título, preço, imagem."""
+    """Faz scraping da página do produto e retorna título, preço e imagem."""
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         resp = requests.get(link_produto, headers=headers, timeout=15)
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        titulo = soup.find("h1")
-        titulo = titulo.get_text(strip=True) if titulo else "Produto sem título"
+        titulo_tag = soup.find("h1")
+        titulo = titulo_tag.get_text(strip=True) if titulo_tag else "Produto sem título"
 
         preco_tag = soup.find("span", {"class": re.compile(r"price-tag-fraction")})
         preco = preco_tag.get_text(strip=True) if preco_tag else ""
