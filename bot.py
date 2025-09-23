@@ -171,6 +171,7 @@ async def postar_shopee():
     print(f"✅ Produto Shopee adicionado à fila: {titulo_original}")
     
 import re
+from bs4 import BeautifulSoup
 
 def extrair_link_de_mensagem(texto: str) -> str | None:
     match = re.search(r"https?://\S+", texto)
@@ -258,45 +259,50 @@ def buscar_id_por_termo(termo: str) -> str | None:
     return None
 
 def extrair_id_ml(link: str) -> str | None:
-    print(f"🔗 Link recebido: {link}")
-
-    # 1️⃣ Link final resolvido
     final_url = resolver_url(link)
-    print(f"➡️ Link final resolvido: {final_url}")
     item_id = extrair_id_por_regex(final_url)
     if item_id:
-        print(f"✅ ID encontrado no link final: {item_id}")
         return item_id
-
-    # 2️⃣ HTML do link final
     item_id = extrair_id_por_html(final_url)
     if item_id:
-        print(f"✅ ID encontrado no HTML do link final: {item_id}")
         return item_id
-
-    # 3️⃣ Regex no link original
-    item_id = extrair_id_por_regex(link)
-    if item_id:
-        print(f"✅ ID encontrado no link original: {item_id}")
-        return item_id
-
-    # 4️⃣ HTML do link original
-    item_id = extrair_id_por_html(link)
-    if item_id:
-        print(f"✅ ID encontrado no HTML do link original: {item_id}")
-        return item_id
-
-    # 5️⃣ Busca por termo
     termo = termo_de_busca(final_url)
     if termo:
-        print(f"🔍 Termo de busca extraído: {termo}")
         item_id = buscar_id_por_termo(termo)
         if item_id:
-            print(f"✅ ID encontrado via busca por termo: {item_id}")
             return item_id
-
-    print("❌ Nenhum ID encontrado.")
+    item_id = extrair_id_por_regex(link)
+    if item_id:
+        return item_id
+    item_id = extrair_id_por_html(link)
+    if item_id:
+        return item_id
     return None
+
+def extrair_dados_html(link_produto: str) -> dict:
+    """Faz scraping da página do produto e retorna título, preço, imagem."""
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(link_produto, headers=headers, timeout=15)
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        titulo = soup.find("h1")
+        titulo = titulo.get_text(strip=True) if titulo else "Produto sem título"
+
+        preco_tag = soup.find("span", {"class": re.compile(r"price-tag-fraction")})
+        preco = preco_tag.get_text(strip=True) if preco_tag else ""
+
+        imagem_tag = soup.find("img", {"class": re.compile(r"ui-pdp-image")})
+        imagem = imagem_tag["src"] if imagem_tag and "src" in imagem_tag.attrs else ""
+
+        return {
+            "titulo": titulo,
+            "preco": preco,
+            "imagem": imagem
+        }
+    except Exception as e:
+        print(f"⚠️ Falha ao extrair dados HTML: {e}")
+        return {"titulo": "", "preco": "", "imagem": ""}
 
 async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = (update.message.text or "").strip()
@@ -310,41 +316,22 @@ async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Não consegui identificar o ID do produto.")
         return
 
-    try:
-        r = requests.get(f"https://api.mercadolibre.com/items/{id_produto}", timeout=10)
-        if r.status_code != 200:
-            await update.message.reply_text("❌ Erro ao buscar produto no Mercado Livre.")
-            return
-        dados = r.json()
+    # Monta link direto do produto para scraping
+    link_produto = f"https://produto.mercadolivre.com.br/{id_produto}"
+    dados = extrair_dados_html(link_produto)
 
-        titulo = dados.get("title", "Produto sem título")
-        preco = formatar_preco(dados.get("price", ""))
-        parcelas = dados.get("installments", {})
-        if parcelas:
-            qtd = parcelas.get("quantity", 0)
-            valor_parcela = parcelas.get("amount", 0)
-            juros = parcelas.get("rate", 0)
-            if juros == 0:
-                info_parcelas = f"{qtd}x de {formatar_preco(valor_parcela)} sem juros"
-            else:
-                info_parcelas = f"{qtd}x de {formatar_preco(valor_parcela)} com juros"
-        else:
-            info_parcelas = "Sem informação de parcelamento"
+    titulo = dados["titulo"]
+    preco = formatar_preco(dados["preco"]) if dados["preco"] else "Preço indisponível"
+    imagem = dados["imagem"]
 
-        frete_tags = dados.get("shipping", {}).get("tags", [])
-        frete_info = "🚚 Frete Full" if "fulfillment" in frete_tags else "📦 Frete normal"
+    link_encurtado = encurtar_link(link_afiliado)
 
-        imagem = dados.get("thumbnail", "")
-
-        link_encurtado = encurtar_link(link_afiliado)
-
-        anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
+    anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
 
 {titulo}
 
 💰 Por: {preco}
-💳 {info_parcelas}
-{frete_info}
+📦 Oferta exclusiva
 
 👉 Compre por aqui: {link_encurtado}
 
@@ -353,8 +340,8 @@ async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🌐 Siga nossas redes sociais:
 {LINK_CENTRAL}"""
 
-        fila_ml.append({"titulo": titulo, "imagem": imagem, "anuncio": anuncio})
-        await update.message.reply_text("✅ Produto do Mercado Livre adicionado à fila.")
+    fila_ml.append({"titulo": titulo, "imagem": imagem, "anuncio": anuncio})
+    await update.message.reply_text("✅ Produto do Mercado Livre adicionado à fila.")
 
     except Exception as e:
         await update.message.reply_text(f"Erro: {e}")
