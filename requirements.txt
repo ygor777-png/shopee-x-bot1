@@ -4,4 +4,4 @@ pyshorteners
 pytz
 requests
 huggingface_hub
-pip install beautifulsoup4
+beautifulsoup4
