@@ -169,7 +169,7 @@ async def postar_shopee():
 
     fila_shopee.append({"titulo": titulo_original, "imagem": imagem_url, "anuncio": anuncio})
     print(f"✅ Produto Shopee adicionado à fila: {titulo_original}")
-
+    
 import re
 
 def extrair_link_de_mensagem(texto: str) -> str | None:
@@ -217,16 +217,9 @@ def extrair_id_por_regex(url: str) -> str | None:
 
 def extrair_id_por_html(link: str) -> str | None:
     try:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/116.0 Safari/537.36"
-            )
-        }
+        headers = {"User-Agent": "Mozilla/5.0"}
         resp = requests.get(link, headers=headers, timeout=15)
-        html = resp.text
-        m = re.search(r"MLB\d{6,}", html)
+        m = re.search(r"MLB\d{6,}", resp.text)
         if m:
             return m.group(0)
     except Exception as e:
@@ -265,29 +258,44 @@ def buscar_id_por_termo(termo: str) -> str | None:
     return None
 
 def extrair_id_ml(link: str) -> str | None:
-    # 1️⃣ Tenta pelo link final
+    print(f"🔗 Link recebido: {link}")
+
+    # 1️⃣ Link final resolvido
     final_url = resolver_url(link)
+    print(f"➡️ Link final resolvido: {final_url}")
     item_id = extrair_id_por_regex(final_url)
     if item_id:
+        print(f"✅ ID encontrado no link final: {item_id}")
         return item_id
 
-    # 2️⃣ Tenta pelo HTML do link de afiliado
-    item_id = extrair_id_por_html(link)
+    # 2️⃣ HTML do link final
+    item_id = extrair_id_por_html(final_url)
     if item_id:
+        print(f"✅ ID encontrado no HTML do link final: {item_id}")
         return item_id
 
-    # 3️⃣ Tenta por termo de busca
-    termo = termo_de_busca(final_url)
-    if termo:
-        item_id = buscar_id_por_termo(termo)
-        if item_id:
-            return item_id
-
-    # 4️⃣ Última tentativa no link original
+    # 3️⃣ Regex no link original
     item_id = extrair_id_por_regex(link)
     if item_id:
+        print(f"✅ ID encontrado no link original: {item_id}")
         return item_id
 
+    # 4️⃣ HTML do link original
+    item_id = extrair_id_por_html(link)
+    if item_id:
+        print(f"✅ ID encontrado no HTML do link original: {item_id}")
+        return item_id
+
+    # 5️⃣ Busca por termo
+    termo = termo_de_busca(final_url)
+    if termo:
+        print(f"🔍 Termo de busca extraído: {termo}")
+        item_id = buscar_id_por_termo(termo)
+        if item_id:
+            print(f"✅ ID encontrado via busca por termo: {item_id}")
+            return item_id
+
+    print("❌ Nenhum ID encontrado.")
     return None
 
 async def capturar_ml(update: Update, context: ContextTypes.DEFAULT_TYPE):
