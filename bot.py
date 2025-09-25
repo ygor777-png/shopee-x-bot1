@@ -11,10 +11,10 @@ from telegram.ext import (
 
 # 🔹 Configurações
 TOKEN = os.getenv("BOT_TOKEN")  # Token do bot
-GRUPO_SAIDA_ID = int(os.getenv("GRUPO_SAIDA_ID", "-1001234567890"))  # ID do grupo de saída
-GRUPO_ENTRADA_ID = int(os.getenv("GRUPO_ENTRADA_ID", "-1009876543210"))  # ID do grupo de entrada
+GRUPO_SAIDA_ID = int(os.getenv("GRUPO_SAIDA_ID", "-1001592474533"))  # ID do grupo de saída
+GRUPO_ENTRADA_ID = int(os.getenv("GRUPO_ENTRADA_ID", "-4653176769"))  # ID do grupo de entrada
 CSV_URLS = os.getenv("CSV_URLS", "")  # URL do CSV da Shopee
-LINK_CENTRAL = os.getenv("LINK_CENTRAL", "https://linktr.ee/seulink")  # Link central
+LINK_CENTRAL = os.getenv("LINK_CENTRAL", "https://atom.bio/ofertas_express")  # Link central
 
 # 🔹 Fila de produtos
 fila_shopee = []
