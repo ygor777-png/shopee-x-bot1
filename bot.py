@@ -60,8 +60,10 @@ def criar_anuncio(link, titulo, precos):
 🌐 Siga nossas redes sociais:
 {LINK_CENTRAL}"""
 
+import random
+
 def postar_shopee():
-    """Seleciona o produto com maior desconto ainda não postado e adiciona à fila."""
+    """Seleciona um produto aleatório do CSV ainda não postado e adiciona à fila."""
     try:
         if not CSV_URLS:
             print("⚠️ Nenhuma URL de CSV configurada.")
@@ -70,21 +72,13 @@ def postar_shopee():
         print(f"📂 Lendo CSV da URL: {CSV_URLS}")
         df = pd.read_csv(CSV_URLS)
 
-        # Garante que temos colunas de preço
-        if "PRICE" in df.columns and "DISCOUNT_PRICE" in df.columns:
-            df["PRICE"] = pd.to_numeric(df["PRICE"], errors="coerce")
-            df["DISCOUNT_PRICE"] = pd.to_numeric(df["DISCOUNT_PRICE"], errors="coerce")
-            df["DESCONTO"] = (df["PRICE"] - df["DISCOUNT_PRICE"]) / df["PRICE"] * 100
-        else:
-            df["DESCONTO"] = 0
-
-        # Ordena pelo maior desconto
-        df = df.sort_values(by="DESCONTO", ascending=False)
+        # Embaralha as linhas para pegar aleatório
+        df = df.sample(frac=1).reset_index(drop=True)
 
         for _, row in df.iterrows():
-            link = achar(row, "Link", "product_link", "Link", "product_short_link")
+            link = achar(row, "Product Link", "product_link", "Link", "product_short_link")
             if not link or link in produtos_postados:
-                continue  # pula se já foi postado
+                continue
 
             titulo = achar(row, "Product Name", "Título", "title")
             preco1 = achar(row, "price", "old_price", "preco_original", "original_price", "preço original")
@@ -105,9 +99,9 @@ def postar_shopee():
                 "anuncio": anuncio
             })
 
-            produtos_postados.add(link)  # marca como já usado
-            print(f"✅ Produto Shopee adicionado à fila: {titulo} (Desconto {row['DESCONTO']:.1f}%)")
-            break  # só adiciona um por ciclo
+            produtos_postados.add(link)
+            print(f"✅ Produto Shopee adicionado à fila: {titulo}")
+            break
 
     except Exception as e:
         print(f"Erro ao ler CSV da Shopee: {e}")
@@ -192,11 +186,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "▶️ */playcsv* → Retoma o envio automático\n\n"
         "📝 *Como mandar produtos manualmente no grupo de entrada:*\n"
         "Envie a mensagem exatamente neste formato:\n\n"
+        "`Link do produto`\n"
         "`Título do produto`\n"
         "`Valor antes e depois` (ou apenas um valor)\n"
-        "`Link do produto`\n\n"
-        "➡️ O bot vai formatar e colocar esse produto na fila com prioridade. "
-        "Se não houver produto manual, ele posta automaticamente da Shopee a cada 10 minutos."
+        "`Cupom` (opcional)\n\n"
+        "➡️ Se você incluir um cupom, o anúncio será formatado destacando o desconto no Mercado Livre. "
+        "Se não incluir, ele segue o padrão normal.\n\n"
+        "⚡ O bot sempre dá prioridade ao que você mandar manualmente. "
+        "Se não houver nada, ele posta automaticamente da Shopee a cada 10 minutos."
     )
     await update.message.reply_text(texto, parse_mode="Markdown")
 
@@ -206,18 +203,29 @@ async def entrada_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return  # só reage no grupo de entrada
 
     texto = update.message.text.strip().split("\n")
-    if len(texto) < 2:
+    if len(texto) < 3:
         return  # formato inválido
 
-    titulo = texto[0]
-    precos = texto[1]
-    link = texto[2] if len(texto) > 2 else None
+    link = texto[0]
+    titulo = texto[1]
+    valor = texto[2]
+    cupom = texto[3] if len(texto) > 3 else None
 
-    anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
+    if cupom:
+        anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
+
+CUPOM + {valor} no Mercado Livre: "{cupom}"
+
+🌐 Siga nossas redes sociais:
+{LINK_CENTRAL}
+
+⚠️ Corre que acaba rápido!"""
+    else:
+        anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
 
 {titulo}
 
-💰 {precos}
+💰 {valor}
 
 👉 Compre por aqui: {link}
 
@@ -234,6 +242,7 @@ async def entrada_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     })
 
     await update.message.reply_text("✅ Produto manual adicionado à fila com prioridade.")
+
 
 # 🚀 Função principal
 def main():
@@ -260,6 +269,6 @@ def main():
     print("🤖 Bot iniciado e agendamento configurado.")
     application.run_polling()
 
+
 if __name__ == "__main__":
     main()
-
