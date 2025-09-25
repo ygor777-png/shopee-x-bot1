@@ -200,6 +200,41 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(texto, parse_mode="Markdown")
 
+# 📥 Handler para mensagens no grupo de entrada
+async def entrada_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != GRUPO_ENTRADA_ID:
+        return  # só reage no grupo de entrada
+
+    texto = update.message.text.strip().split("\n")
+    if len(texto) < 2:
+        return  # formato inválido
+
+    titulo = texto[0]
+    precos = texto[1]
+    link = texto[2] if len(texto) > 2 else None
+
+    anuncio = f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
+
+{titulo}
+
+💰 {precos}
+
+👉 Compre por aqui: {link}
+
+⚠️ Corre que acaba rápido!
+
+🌐 Siga nossas redes sociais:
+{LINK_CENTRAL}"""
+
+    # insere no início da fila = prioridade
+    fila_shopee.insert(0, {
+        "titulo": titulo,
+        "imagem": None,
+        "anuncio": anuncio
+    })
+
+    await update.message.reply_text("✅ Produto manual adicionado à fila com prioridade.")
+
 # 🚀 Função principal
 def main():
     application = Application.builder().token(TOKEN).build()
@@ -227,3 +262,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
