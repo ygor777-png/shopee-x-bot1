@@ -77,7 +77,7 @@ def postar_shopee():
         df = df.sort_values(by="Desconto", ascending=False)
 
         for _, row in df.iterrows():
-            link = achar(row, "Product Link", "PRODUCT_LINK", "Link", "PRODUCT_SHORT_LINK")
+            link = achar(row, "Product Link", "product_link", "Link", "product_short_link")
             if not link or link in produtos_postados:
                 continue  # pula se já foi postado
 
