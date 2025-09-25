@@ -1,46 +1,46 @@
 import os
-import re
 import requests
 import pandas as pd
-import random
 from datetime import datetime
 import pytz
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Configurações
-TOKEN = os.getenv("BOT_TOKEN")
-GRUPO_SAIDA_ID = int(os.getenv("GRUPO_SAIDA_ID", "-1001592474533"))
-CSV_URLS = os.getenv("CSV_URLS", "")
-LINK_CENTRAL = os.getenv("LINK_CENTRAL", "https://atom.bio/ofertas_express")
+# 🔹 Configurações
+TOKEN = os.getenv("BOT_TOKEN")  # Token do bot
+GRUPO_SAIDA_ID = int(os.getenv("GRUPO_SAIDA_ID", "-1001592474533"))  # ID do grupo de saída
+CSV_URLS = os.getenv("CSV_URLS", "")  # URL do CSV da Shopee
+LINK_CENTRAL = os.getenv("LINK_CENTRAL", "https://atom.bio/ofertas_express")  # Link central
+
+# 🔹 Fila de produtos
 fila_shopee = []
+
+# 🔹 Controle de postagem automática
 auto_post_shopee = True
+
+# 🔹 Fuso horário
 TZ = pytz.timezone("America/Sao_Paulo")
 
-# Funções utilitárias
+# 🔹 Controle de repetição
+produtos_postados = set()
+
 def achar(row, *keys):
+    """Procura o primeiro campo existente na linha do CSV."""
     for key in keys:
         if key in row and pd.notna(row[key]):
             return str(row[key]).strip()
     return None
 
 def formatar_preco(valor):
+    """Formata preço para R$X,XX."""
     try:
         valor = str(valor).replace(",", ".")
         return f"R${float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except:
         return valor
 
-def encurtar_link(link):
-    try:
-        r = requests.get(f"http://tinyurl.com/api-create.php?url={link}", timeout=10)
-        if r.status_code == 200:
-            return r.text
-    except:
-        pass
-    return link
-
 def criar_anuncio(link, titulo, precos):
+    """Cria texto do anúncio Shopee."""
     precos_txt = " ➡ ".join(precos) if precos else ""
     return f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
 
@@ -55,8 +55,8 @@ def criar_anuncio(link, titulo, precos):
 🌐 Siga nossas redes sociais:
 {LINK_CENTRAL}"""
 
-# Shopee
 def postar_shopee():
+    """Seleciona o produto com maior desconto ainda não postado e adiciona à fila."""
     try:
         if not CSV_URLS:
             print("⚠️ Nenhuma URL de CSV configurada.")
@@ -65,39 +65,50 @@ def postar_shopee():
         print(f"📂 Lendo CSV da URL: {CSV_URLS}")
         df = pd.read_csv(CSV_URLS)
 
-        # Escolhe produto aleatório
-        row = df.sample(n=1).iloc[0]
+        # Garante que temos colunas de preço
+        if "Price" in df.columns and "Discount Price" in df.columns:
+            df["Price"] = pd.to_numeric(df["Price"], errors="coerce")
+            df["Discount Price"] = pd.to_numeric(df["Discount Price"], errors="coerce")
+            df["Desconto"] = (df["Price"] - df["Discount Price"]) / df["Price"] * 100
+        else:
+            df["Desconto"] = 0
 
-        titulo = achar(row, "titulo", "title", "name", "produto", "product_name", "nome")
-        preco1 = achar(row, "price", "old_price", "preco_original", "original_price", "preço original")
-        preco2 = achar(row, "preco", "sale_price", "valor", "current_price", "preço atual")
-        link = achar(row, "link", "url", "product_link", "produto_url", "url do produto")
+        # Ordena pelo maior desconto
+        df = df.sort_values(by="Desconto", ascending=False)
 
-        if not titulo or not link:
-            print("⚠️ Produto inválido no CSV.")
-            return
+        for _, row in df.iterrows():
+            link = achar(row, "Product Link", "PRODUCT_LINK", "Link", "PRODUCT_SHORT_LINK")
+            if not link or link in produtos_postados:
+                continue  # pula se já foi postado
 
-        link_encurtado = encurtar_link(link)
-        precos = []
-        if preco1:
-            precos.append(formatar_preco(preco1))
-        if preco2 and preco2 != preco1:
-            precos.append(formatar_preco(preco2))
+            titulo = achar(row, "Product Name", "Título", "title")
+            preco1 = achar(row, "price", "old_price", "preco_original", "original_price", "preço original")
+            preco2 = achar(row, "preco", "sale_price", "valor", "current_price", "preço atual")
+            imagem = achar(row, "imagem", "image_link", "img_url", "foto", "picture")
 
-        anuncio = criar_anuncio(link_encurtado, titulo, precos)
-        imagem = achar(row, "imagem", "image_link", "img_url", "foto", "picture")
+            precos = []
+            if preco1:
+                precos.append(formatar_preco(preco1))
+            if preco2 and preco2 != preco1:
+                precos.append(formatar_preco(preco2))
 
-        fila_shopee.append({
-            "titulo": titulo,
-            "imagem": imagem,
-            "anuncio": anuncio
-        })
-        print(f"✅ Produto Shopee adicionado à fila: {titulo}")
+            anuncio = criar_anuncio(link, titulo, precos)
+
+            fila_shopee.append({
+                "titulo": titulo,
+                "imagem": imagem,
+                "anuncio": anuncio
+            })
+
+            produtos_postados.add(link)  # marca como já usado
+            print(f"✅ Produto Shopee adicionado à fila: {titulo} (Desconto {row['Desconto']:.1f}%)")
+            break  # só adiciona um por ciclo
 
     except Exception as e:
         print(f"Erro ao ler CSV da Shopee: {e}")
 
 async def enviar_shopee(context: ContextTypes.DEFAULT_TYPE):
+    """Envia o próximo produto da fila para o grupo do Telegram."""
     try:
         if not fila_shopee:
             print("⚠️ Nenhum produto Shopee na fila para enviar.")
@@ -120,7 +131,7 @@ async def enviar_shopee(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"Erro ao enviar Shopee: {e}")
 
-# Ciclo de postagem
+# 🔄 Ciclo de postagem automática
 async def ciclo_postagem(context: ContextTypes.DEFAULT_TYPE):
     hora_atual = datetime.now(TZ).hour
     if 7 <= hora_atual <= 23 and auto_post_shopee:
@@ -129,12 +140,13 @@ async def ciclo_postagem(context: ContextTypes.DEFAULT_TYPE):
     else:
         print("⏸️ Fora do horário de postagem ou automático pausado.")
 
-# Comandos
+# 📂 Comando manual para postar Shopee
 async def comando_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     postar_shopee()
     await enviar_shopee(context)
     await update.message.reply_text("📂 Produto Shopee postado manualmente.")
 
+# 📊 Status do bot
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     jobs = context.job_queue.get_jobs_by_name("ciclo_postagem")
     if jobs:
@@ -151,28 +163,32 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(texto_status, parse_mode="Markdown")
 
+# ⏸️ Pausar envio automático
 async def stop_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global auto_post_shopee
     auto_post_shopee = False
     await update.message.reply_text("⏸️ Envio automático da Shopee pausado.")
 
+# ▶️ Retomar envio automático
 async def play_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global auto_post_shopee
     auto_post_shopee = True
     await update.message.reply_text("▶️ Envio automático da Shopee retomado.")
 
-# Main
+# 🚀 Função principal
 def main():
     application = Application.builder().token(TOKEN).build()
 
+    # Handlers de comandos
     application.add_handler(CommandHandler("csv", comando_csv))
     application.add_handler(CommandHandler("status", status))
     application.add_handler(CommandHandler("stopcsv", stop_csv))
     application.add_handler(CommandHandler("playcsv", play_csv))
 
+    # Agendamento de postagens automáticas
     application.job_queue.run_repeating(
         ciclo_postagem,
-        interval=60*10,
+        interval=60*10,  # a cada 10 minutos
         first=0,
         name="ciclo_postagem"
     )
