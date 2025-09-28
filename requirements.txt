@@ -1,7 +1,4 @@
-python-telegram-bot[job-queue]==20.6
-pandas
-pyshorteners
-pytz
-requests
-huggingface_hub
-beautifulsoup4
+python-telegram-bot==20.3
+pandas==2.0.3
+requests==2.31.0
+pytz==2023.3
