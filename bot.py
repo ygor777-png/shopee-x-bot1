@@ -29,16 +29,13 @@ TZ = pytz.timezone("America/Sao_Paulo")
 # 🔹 Controle de repetição
 produtos_postados = set()
 
-# 🔗 Encurtador de links (Bitly)
-BITLY_TOKEN = os.getenv("BITLY_TOKEN")
-
+# 🔗 Encurtador de links (TinyURL)
 def encurtar_link(url):
     try:
-        headers = {"Authorization": f"Bearer {BITLY_TOKEN}"}
-        data = {"long_url": url}
-        r = requests.post("https://api-ssl.bitly.com/v4/shorten", json=data, headers=headers)
+        api_url = f"http://tinyurl.com/api-create.php?url={url}"
+        r = requests.get(api_url)
         if r.status_code == 200:
-            return r.json()["link"]
+            return r.text.strip()
         else:
             print("Erro ao encurtar link:", r.text)
             return url
