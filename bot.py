@@ -1,6 +1,7 @@
 import os
 import requests
 import pandas as pd
+import random
 from datetime import datetime
 import pytz
 from telegram import Update
@@ -11,10 +12,10 @@ from telegram.ext import (
 
 # 🔹 Configurações
 TOKEN = os.getenv("BOT_TOKEN")  # Token do bot
-GRUPO_SAIDA_ID = int(os.getenv("GRUPO_SAIDA_ID", "-1001592474533"))  # ID do grupo de saída
-GRUPO_ENTRADA_ID = int(os.getenv("GRUPO_ENTRADA_ID", "-4653176769"))  # ID do grupo de entrada
-CSV_URLS = os.getenv("CSV_URLS", "")  # URL do CSV da Shopee
-LINK_CENTRAL = os.getenv("LINK_CENTRAL", "https://atom.bio/ofertas_express")  # Link central
+GRUPO_SAIDA_ID = int(os.getenv("GRUPO_SAIDA_ID", "-1001592474533"))
+GRUPO_ENTRADA_ID = int(os.getenv("GRUPO_ENTRADA_ID", "-4653176769"))
+CSV_URLS = os.getenv("CSV_URLS", "")
+LINK_CENTRAL = os.getenv("https://atom.bio/ofertas_express", "https://atom.bio/ofertas_express")
 
 # 🔹 Fila de produtos
 fila_shopee = []
@@ -28,8 +29,24 @@ TZ = pytz.timezone("America/Sao_Paulo")
 # 🔹 Controle de repetição
 produtos_postados = set()
 
+# 🔗 Encurtador de links (Bitly)
+BITLY_TOKEN = os.getenv("BITLY_TOKEN")
+
+def encurtar_link(url):
+    try:
+        headers = {"Authorization": f"Bearer {BITLY_TOKEN}"}
+        data = {"long_url": url}
+        r = requests.post("https://api-ssl.bitly.com/v4/shorten", json=data, headers=headers)
+        if r.status_code == 200:
+            return r.json()["link"]
+        else:
+            print("Erro ao encurtar link:", r.text)
+            return url
+    except Exception as e:
+        print("Erro no encurtador:", e)
+        return url
+
 def achar(row, *keys):
-    """Procura o primeiro campo existente na linha do CSV (ignora maiúsculas/minúsculas)."""
     for key in keys:
         for col in row.index:
             if col.strip().lower() == key.strip().lower() and pd.notna(row[col]):
@@ -37,7 +54,6 @@ def achar(row, *keys):
     return None
 
 def formatar_preco(valor):
-    """Formata preço para R$X,XX."""
     try:
         valor = str(valor).replace(",", ".")
         return f"R${float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -45,7 +61,6 @@ def formatar_preco(valor):
         return valor
 
 def criar_anuncio(link, titulo, precos):
-    """Cria texto do anúncio Shopee."""
     precos_txt = " ➡ ".join(precos) if precos else ""
     return f"""⚡ EXPRESS ACHOU, CONFIRA! ⚡
 
@@ -59,8 +74,6 @@ def criar_anuncio(link, titulo, precos):
 
 🌐 Siga nossas redes sociais:
 {LINK_CENTRAL}"""
-
-import random
 
 def postar_shopee():
     """Seleciona um produto aleatório do CSV ainda não postado e adiciona à fila."""
@@ -76,14 +89,17 @@ def postar_shopee():
         df = df.sample(frac=1).reset_index(drop=True)
 
         for _, row in df.iterrows():
-            link = achar(row, "Product Link", "product_link", "Link", "product_short_link")
+            link = achar(row, "PRODUCT_LINK", "PRODUCT_SHORT_LINK")
             if not link or link in produtos_postados:
                 continue
 
-            titulo = achar(row, "Product Name", "Título", "title")
-            preco1 = achar(row, "price", "old_price", "preco_original", "original_price", "preço original")
-            preco2 = achar(row, "preco", "sale_price", "valor", "current_price", "preço atual")
-            imagem = achar(row, "imagem", "image_link", "img_url", "foto", "picture")
+            # 🔗 encurta o link antes de postar
+            link = encurtar_link(link)
+
+            titulo = achar(row, "PRODUCT_NAME")
+            preco1 = achar(row, "PRICE")
+            preco2 = achar(row, "DISCOUNT_PRICE")
+            imagem = achar(row, "IMAGE")
 
             precos = []
             if preco1:
@@ -206,7 +222,7 @@ async def entrada_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(texto) < 3:
         return  # formato inválido
 
-    link = texto[0]
+    link = encurtar_link(texto[0])  # 🔗 encurta o link manual também
     titulo = texto[1]
     valor = texto[2]
     cupom = texto[3] if len(texto) > 3 else None
@@ -242,7 +258,6 @@ CUPOM + {valor} no Mercado Livre: "{cupom}"
     })
 
     await update.message.reply_text("✅ Produto manual adicionado à fila com prioridade.")
-
 
 # 🚀 Função principal
 def main():
