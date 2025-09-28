@@ -89,17 +89,17 @@ def postar_shopee():
         df = df.sample(frac=1).reset_index(drop=True)
 
         for _, row in df.iterrows():
-            link = achar(row, "PRODUCT_LINK", "PRODUCT_SHORT_LINK")
+            link = achar(row, "Product Link", "product_link", "Link", "product_short_link")
             if not link or link in produtos_postados:
                 continue
 
             # 🔗 encurta o link antes de postar
             link = encurtar_link(link)
 
-            titulo = achar(row, "PRODUCT_NAME")
-            preco1 = achar(row, "PRICE")
-            preco2 = achar(row, "DISCOUNT_PRICE")
-            imagem = achar(row, "IMAGE")
+            titulo = achar(row, "Product Name", "Título", "title")
+            preco1 = achar(row, "price", "old_price", "preco_original", "original_price", "preço original")
+            preco2 = achar(row, "preco", "sale_price", "valor", "current_price", "preço atual")
+            imagem = achar(row, "imagem", "image_link", "img_url", "foto", "picture")
 
             precos = []
             if preco1:
