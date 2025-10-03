@@ -69,7 +69,7 @@ def criar_anuncio(link, titulo, precos):
 
 ⚠️ Corre que acaba rápido!
 
-🌐 Siga nossas redes sociais:
+🌐 Link para entrar no grupo:
 {LINK_CENTRAL}"""
 
 def postar_shopee():
@@ -229,7 +229,7 @@ async def entrada_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 CUPOM + {valor} no Mercado Livre: "{cupom}"
 
-🌐 Siga nossas redes sociais:
+🌐 Link para entrar no grupo:
 {LINK_CENTRAL}
 
 ⚠️ Corre que acaba rápido!"""
@@ -244,7 +244,7 @@ CUPOM + {valor} no Mercado Livre: "{cupom}"
 
 ⚠️ Corre que acaba rápido!
 
-🌐 Siga nossas redes sociais:
+🌐 Link para entrar no grupo:
 {LINK_CENTRAL}"""
 
     # insere no início da fila = prioridade
